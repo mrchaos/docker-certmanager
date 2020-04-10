@@ -73,7 +73,7 @@ Options:
                                   Source type (default to self-generate).
   --dry-run                       Generate save certs and/or crypto keys only
                                   without saving it to external backends.
-  --opts TEXT                     Options for targeted service (can be set
+  --opts KEY:VALUE                Options for targeted service (can be set
                                   multiple times).
   -h, --help                      Show this message and exit.
 ```
