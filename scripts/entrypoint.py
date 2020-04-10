@@ -48,6 +48,7 @@ def cli():
     "--opts",
     help="Options for targeted service (can be set multiple times).",
     multiple=True,
+    metavar="KEY:VALUE",
 )
 def patch(service, source, dry_run, opts):
     """Patch cert and/or crypto keys for the targeted service.
