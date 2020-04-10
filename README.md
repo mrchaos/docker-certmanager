@@ -128,9 +128,24 @@ docker run \
     -e GLUU_CONFIG_CONSUL_HOST=consul \
     -e GLUU_SECRET_ADAPTER=vault \
     -e GLUU_SECRET_VAULT_HOST=vault \
-    -e GLUU_LDAP_URL=ldap:1636 \
-    -v $PWD/volumes/certs:/etc/certs \
     -v $PWD/vault_role_id.txt:/etc/certs/vault_role_id \
     -v $PWD/vault_secret_id.txt:/etc/certs/vault_secret_id \
     gluufederation/certman:4.1.1_dev patch web --source self-generate
+```
+
+Or
+
+```sh
+docker run \
+    --rm \
+    --network container:consul \
+    -e GLUU_CONFIG_ADAPTER=consul \
+    -e GLUU_CONFIG_CONSUL_HOST=consul \
+    -e GLUU_SECRET_ADAPTER=vault \
+    -e GLUU_SECRET_VAULT_HOST=vault \
+    -v $PWD/vault_role_id.txt:/etc/certs/vault_role_id \
+    -v $PWD/vault_secret_id.txt:/etc/certs/vault_secret_id \
+    -v $PWD/ssl.crt:/etc/certs/gluu_https.crt \
+    -v $PWD/ssl.key:/etc/certs/gluu_https.key \
+    gluufederation/certman:4.1.1_dev patch web --source from-files
 ```
