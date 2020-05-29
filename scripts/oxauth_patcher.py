@@ -194,7 +194,7 @@ class OxauthPatcher(BasePatcher):
 
         if not config:
             # search failed due to missing entry
-            logger.warn("Unable to find oxAuth config")
+            logger.warning("Unable to find oxAuth config")
             return
 
         jks_pass = self.manager.secret.get("oxauth_openid_jks_pass")
@@ -209,9 +209,9 @@ class OxauthPatcher(BasePatcher):
             conf_dynamic = config["oxAuthConfDynamic"]
 
         if conf_dynamic["keyRegenerationEnabled"]:
-            logger.warn("keyRegenerationEnabled config was set to true; "
-                        "skipping proccess to avoid conflict with "
-                        "builtin key rotation feature in oxAuth")
+            logger.warning("keyRegenerationEnabled config was set to true; "
+                           "skipping proccess to avoid conflict with "
+                           "builtin key rotation feature in oxAuth")
             return
 
         conf_dynamic.update({
@@ -263,4 +263,4 @@ class OxauthPatcher(BasePatcher):
                     generate_base64_contents(json.dumps(merged_webkeys)),
                 )
         except (TypeError, ValueError) as exc:
-            logger.warn("Unable to get public keys; reason={}".format(exc))
+            logger.warning(f"Unable to get public keys; reason={exc}")

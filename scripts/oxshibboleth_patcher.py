@@ -32,15 +32,15 @@ class OxshibbolethPatcher(BasePatcher):
         files_exist = os.path.isfile(sealer_jks) and os.path.isfile(sealer_kver)
 
         if self.source == FROM_FILES and not files_exist:
-            logger.warn("Unable to find {} and {} files".format(sealer_jks, sealer_kver))
+            logger.warning(f"Unable to find {sealer_jks} and {sealer_kver} files")
             return "", ""
 
         elif self.source == FROM_FILES and files_exist:
-            logger.info("Using existing {} and {} files".format(sealer_jks, sealer_kver))
+            logger.info(f"Using existing {sealer_jks} and {sealer_kver} files")
             return sealer_jks, sealer_kver
 
         # probably self-generate
-        logger.info("Generating new {} and {} files".format(sealer_jks, sealer_kver))
+        logger.info(f"Generating new {sealer_jks} and {sealer_kver} files")
         self.gen_idp3_key(passwd)
         return sealer_jks, sealer_kver
 
@@ -58,12 +58,12 @@ class OxshibbolethPatcher(BasePatcher):
         keystore_fn = self._patch_keystore("shibIDP", self.manager.config.get("hostname"), passwd)
         if not self.dry_run:
             if keystore_fn:
-                self.manager.secret.from_file("shibIDP_jks_base64", keystore_fn, encode=True)
+                self.manager.secret.from_file("shibIDP_jks_base64", keystore_fn, encode=True, binary_mode=True)
 
         sealer_jks_fn, sealer_kver_fn = self._patch_shib_sealer(passwd)
         if not self.dry_run:
             if sealer_jks_fn:
-                self.manager.secret.from_file("sealer_jks_base64", sealer_jks_fn, encode=True)
+                self.manager.secret.from_file("sealer_jks_base64", sealer_jks_fn, encode=True, binary_mode=True)
             if sealer_kver_fn:
                 self.manager.secret.from_file("sealer_kver_base64", sealer_kver_fn, encode=True)
 

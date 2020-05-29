@@ -22,15 +22,15 @@ class BasePatcher(object):
         files_exist = os.path.isfile(keystore_fn)
 
         if self.source == FROM_FILES and not files_exist:
-            logger.warn("Unable to find {} files".format(keystore_fn))
+            logger.warning(f"Unable to find {keystore_fn} file")
             return ""
 
         elif self.source == FROM_FILES and files_exist:
-            logger.info("Using existing {} files".format(keystore_fn))
+            logger.info(f"Using existing {keystore_fn} file")
             return keystore_fn
 
         # probably self-generate
-        logger.info("Generating new {} files".format(keystore_fn))
+        logger.info(f"Generating new {keystore_fn} files")
         generate_keystore(prefix, hostname, passwd)
         return keystore_fn
 
@@ -40,15 +40,15 @@ class BasePatcher(object):
         files_exist = os.path.isfile(cert_fn) and os.path.isfile(key_fn)
 
         if self.source == FROM_FILES and not files_exist:
-            logger.warn("Unable to find {} and {} files".format(cert_fn, key_fn))
+            logger.warning(f"Unable to find {cert_fn} and {key_fn} files")
             return "", ""
 
         if self.source == FROM_FILES and files_exist:
-            logger.info("Using existing {} and {} files".format(cert_fn, key_fn))
+            logger.info(f"Using existing {cert_fn} and {key_fn} files")
             return cert_fn, key_fn
 
         # probably self-generate
-        logger.info("Generating new {} and {} files".format(cert_fn, key_fn))
+        logger.info(f"Generating new {cert_fn} and {key_fn} files")
         generate_ssl_certkey(
             prefix,
             cert_passwd,
