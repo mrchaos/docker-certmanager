@@ -56,7 +56,7 @@ def patch(service, source, dry_run, opts):
     manager = get_manager()
 
     if dry_run:
-        logger.warn("Dry-run mode is enabled!")
+        logger.warning("Dry-run mode is enabled!")
 
     callback_classes = {
         "web": WebPatcher,
@@ -64,8 +64,9 @@ def patch(service, source, dry_run, opts):
         "oxauth": OxauthPatcher,
     }
 
-    logger.info("Processing updates for service '{}' using "
-                "source type '{}'".format(service, source))
+    logger.info(
+        f"Processing updates for service {service} using source type {source}"
+    )
 
     _opts = {}
     for opt in opts:

@@ -14,15 +14,14 @@ logger = logging.getLogger("certman")
 class OxshibbolethPatcher(BasePatcher):
     @classmethod
     def gen_idp3_key(cls, storepass):
-        cmd = " ".join([
-            "java",
-            "-classpath '/app/javalibs/*'",
-            "net.shibboleth.utilities.java.support.security.BasicKeystoreKeyStrategyTool",
-            "--storefile /etc/certs/sealer.jks",
-            "--versionfile /etc/certs/sealer.kver",
-            "--alias secret",
-            "--storepass {}".format(storepass),
-        ])
+        cmd = (
+            "java -classpath '/app/javalibs/*' "
+            "net.shibboleth.utilities.java.support.security.BasicKeystoreKeyStrategyTool "
+            "--storefile /etc/certs/sealer.jks "
+            "--versionfile /etc/certs/sealer.kver "
+            "--alias secret "
+            f"--storepass {storepass}"
+        )
         return exec_cmd(cmd)
 
     def _patch_shib_sealer(self, passwd):
@@ -32,7 +31,9 @@ class OxshibbolethPatcher(BasePatcher):
         files_exist = os.path.isfile(sealer_jks) and os.path.isfile(sealer_kver)
 
         if self.source == FROM_FILES and not files_exist:
-            logger.warning(f"Unable to find {sealer_jks} and {sealer_kver} files")
+            logger.warning(
+                f"Unable to find {sealer_jks} and {sealer_kver} files"
+            )
             return "", ""
 
         elif self.source == FROM_FILES and files_exist:
@@ -51,27 +52,47 @@ class OxshibbolethPatcher(BasePatcher):
         cert_fn, key_fn = self._patch_cert_key("shibIDP", passwd)
         if not self.dry_run:
             if cert_fn:
-                self.manager.secret.from_file("shibIDP_cert", cert_fn, encode=True)
+                self.manager.secret.from_file(
+                    "shibIDP_cert", cert_fn, encode=True,
+                )
             if key_fn:
-                self.manager.secret.from_file("shibIDP_cert", key_fn, encode=True)
+                self.manager.secret.from_file(
+                    "shibIDP_cert", key_fn, encode=True,
+                )
 
-        keystore_fn = self._patch_keystore("shibIDP", self.manager.config.get("hostname"), passwd)
+        keystore_fn = self._patch_keystore(
+            "shibIDP", self.manager.config.get("hostname"), passwd,
+        )
         if not self.dry_run:
             if keystore_fn:
-                self.manager.secret.from_file("shibIDP_jks_base64", keystore_fn, encode=True, binary_mode=True)
+                self.manager.secret.from_file(
+                    "shibIDP_jks_base64",
+                    keystore_fn,
+                    encode=True,
+                    binary_mode=True,
+                )
 
         sealer_jks_fn, sealer_kver_fn = self._patch_shib_sealer(passwd)
         if not self.dry_run:
             if sealer_jks_fn:
-                self.manager.secret.from_file("sealer_jks_base64", sealer_jks_fn, encode=True, binary_mode=True)
+                self.manager.secret.from_file(
+                    "sealer_jks_base64",
+                    sealer_jks_fn,
+                    encode=True,
+                    binary_mode=True,
+                )
             if sealer_kver_fn:
-                self.manager.secret.from_file("sealer_kver_base64", sealer_kver_fn, encode=True)
+                self.manager.secret.from_file(
+                    "sealer_kver_base64", sealer_kver_fn, encode=True,
+                )
 
         # IDP signing
         cert_fn, key_fn = self._patch_cert_key("idp-signing", passwd)
         if not self.dry_run:
             if cert_fn:
-                self.manager.secret.from_file("idp3SigningCertificateText", cert_fn)
+                self.manager.secret.from_file(
+                    "idp3SigningCertificateText", cert_fn,
+                )
             if key_fn:
                 self.manager.secret.from_file("idp3SigningKeyText", key_fn)
 
@@ -79,6 +100,8 @@ class OxshibbolethPatcher(BasePatcher):
         cert_fn, key_fn = self._patch_cert_key("idp-encryption", passwd)
         if not self.dry_run:
             if cert_fn:
-                self.manager.secret.from_file("idp3EncryptionCertificateText", cert_fn)
+                self.manager.secret.from_file(
+                    "idp3EncryptionCertificateText", cert_fn,
+                )
             if key_fn:
                 self.manager.secret.from_file("idp3EncryptionKeyText", key_fn)

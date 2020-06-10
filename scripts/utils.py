@@ -4,80 +4,56 @@ from pygluu.containerlib.utils import exec_cmd
 def generate_ssl_certkey(suffix, passwd, email, hostname, org_name,
                          country_code, state, city):
     # create key with password
-    _, err, retcode = exec_cmd(" ".join([
-        "openssl",
-        "genrsa -des3",
-        "-out /etc/certs/{}.key.orig".format(suffix),
-        "-passout pass:'{}' 2048".format(passwd),
-    ]))
-    assert retcode == 0, "Failed to generate SSL key with password; reason={}".format(err)
+    _, err, retcode = exec_cmd(
+        f"openssl genrsa -des3 -out /etc/certs/{suffix}.key.orig "
+        f"-passout pass:'{passwd}' 2048"
+    )
+    assert retcode == 0, \
+        f"Failed to generate SSL key with password; reason={err.decode()}"
 
     # create .key
-    _, err, retcode = exec_cmd(" ".join([
-        "openssl",
-        "rsa",
-        "-in /etc/certs/{}.key.orig".format(suffix),
-        "-passin pass:'{}'".format(passwd),
-        "-out /etc/certs/{}.key".format(suffix),
-    ]))
-    assert retcode == 0, "Failed to generate SSL key; reason={}".format(err)
+    _, err, retcode = exec_cmd(
+        f"openssl rsa -in /etc/certs/{suffix}.key.orig -passin pass:'{passwd}' "
+        f"-out /etc/certs/{suffix}.key"
+    )
+    assert retcode == 0, f"Failed to generate SSL key; reason={err.decode()}"
 
     # create .csr
-    _, err, retcode = exec_cmd(" ".join([
-        "openssl",
-        "req",
-        "-new",
-        "-key /etc/certs/{}.key".format(suffix),
-        "-out /etc/certs/{}.csr".format(suffix),
-        """-subj /C="{}"/ST="{}"/L="{}"/O="{}"/CN="{}"/emailAddress='{}'""".format(country_code, state, city, org_name, hostname, email),
-
-    ]))
-    assert retcode == 0, "Failed to generate SSL CSR; reason={}".format(err)
+    _, err, retcode = exec_cmd(
+        f"openssl req -new -key /etc/certs/{suffix}.key "
+        f"-out /etc/certs/{suffix}.csr "
+        f"-subj /C='{country_code}'/ST='{state}'/L='{city}'/O='{org_name}'"
+        f"/CN='{hostname}'/emailAddress='{email}'"
+    )
+    assert retcode == 0, f"Failed to generate SSL CSR; reason={err.decode()}"
 
     # create .crt
-    _, err, retcode = exec_cmd(" ".join([
-        "openssl",
-        "x509",
-        "-req",
-        "-days 365",
-        "-in /etc/certs/{}.csr".format(suffix),
-        "-signkey /etc/certs/{}.key".format(suffix),
-        "-out /etc/certs/{}.crt".format(suffix),
-    ]))
-    assert retcode == 0, "Failed to generate SSL cert; reason={}".format(err)
+    _, err, retcode = exec_cmd(
+        f"openssl x509 -req -days 365 -in /etc/certs/{suffix}.csr "
+        f"-signkey /etc/certs/{suffix}.key -out /etc/certs/{suffix}.crt"
+    )
+    assert retcode == 0, f"Failed to generate SSL cert; reason={err.decode()}"
 
     # return the paths
-    return "/etc/certs/{}.crt".format(suffix), \
-           "/etc/certs/{}.key".format(suffix)
+    return f"/etc/certs/{suffix}.crt", f"/etc/certs/{suffix}.key"
 
 
 def generate_keystore(suffix, hostname, keypasswd):
     # converts key to pkcs12
-    cmd = " ".join([
-        "openssl",
-        "pkcs12",
-        "-export",
-        "-inkey /etc/certs/{}.key".format(suffix),
-        "-in /etc/certs/{}.crt".format(suffix),
-        "-out /etc/certs/{}.pkcs12".format(suffix),
-        "-name {}".format(hostname),
-        "-passout pass:'{}'".format(keypasswd),
-    ])
-    _, err, retcode = exec_cmd(cmd)
-    assert retcode == 0, "Failed to generate PKCS12 keystore; reason={}".format(err)
+    _, err, retcode = exec_cmd(
+        f"openssl pkcs12 -export -inkey /etc/certs/{suffix}.key "
+        f"-in /etc/certs/{suffix}.crt -out /etc/certs/{suffix}.pkcs12 "
+        f"-name {hostname} -passout pass:'{keypasswd}'"
+    )
+    assert retcode == 0, \
+        f"Failed to generate PKCS12 keystore; reason={err.decode()}"
 
     # imports p12 to keystore
-    cmd = " ".join([
-        "keytool",
-        "-importkeystore",
-        "-srckeystore /etc/certs/{}.pkcs12".format(suffix),
-        "-srcstorepass {}".format(keypasswd),
-        "-srcstoretype PKCS12",
-        "-destkeystore /etc/certs/{}.jks".format(suffix),
-        "-deststorepass {}".format(keypasswd),
-        "-deststoretype JKS",
-        "-keyalg RSA",
-        "-noprompt",
-    ])
-    _, err, retcode = exec_cmd(cmd)
-    assert retcode == 0, "Failed to generate JKS keystore; reason={}".format(err)
+    _, err, retcode = exec_cmd(
+        f"keytool -importkeystore -srckeystore /etc/certs/{suffix}.pkcs12 "
+        f"-srcstorepass {keypasswd} -srcstoretype PKCS12 "
+        f"-destkeystore /etc/certs/{suffix}.jks -deststorepass {keypasswd} "
+        "-deststoretype JKS -keyalg RSA -noprompt"
+    )
+    assert retcode == 0, \
+        f"Failed to generate JKS keystore; reason={err.decode()}"

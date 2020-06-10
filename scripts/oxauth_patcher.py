@@ -47,17 +47,13 @@ def generate_openid_keys(passwd, jks_path, dn, exp=365):
     if os.path.isfile(jks_path):
         os.unlink(jks_path)
 
-    cmd = " ".join([
-        "java",
-        "-Dlog4j.defaultInitOverride=true",
-        "-jar", "/app/javalibs/oxauth-client.jar",
-        "-enc_keys", ENC_KEYS,
-        "-sig_keys", SIG_KEYS,
-        "-dnname", "{!r}".format(dn),
-        "-expiration_hours", "{}".format(exp),
-        "-keystore", jks_path,
-        "-keypasswd", passwd,
-    ])
+    cmd = (
+        "java -Dlog4j.defaultInitOverride=true "
+        "-jar /app/javalibs/oxauth-client.jar "
+        f"-enc_keys {ENC_KEYS} -sig_keys {SIG_KEYS} "
+        f"-dnname '{dn}' -expiration_hours {exp} "
+        f"-keystore {jks_path} -keypasswd {passwd}"
+    )
     return exec_cmd(cmd)
 
 
@@ -141,13 +137,14 @@ class CouchbasePersistence(BasePersistence):
         return config
 
     def modify_oxauth_config(self, id_, ox_rev, conf_dynamic, conf_webkeys):
+        conf_dynamic = json.dumps(conf_dynamic)
+        conf_webkeys = json.dumps(conf_webkeys)
+
         req = self.backend.exec_query(
-            "UPDATE `gluu` "
-            "USE KEYS '{0}' "
-            "SET oxRevision={1}, oxAuthConfDynamic={2}, oxAuthConfWebKeys={3} "
-            "RETURNING oxRevision".format(
-                id_, ox_rev, json.dumps(conf_dynamic), json.dumps(conf_webkeys),
-            )
+            f"UPDATE `gluu` USE KEYS '{id_}' "
+            f"SET oxRevision={ox_rev}, oxAuthConfDynamic={conf_dynamic}, "
+            f"oxAuthConfWebKeys={conf_webkeys} "
+            "RETURNING oxRevision"
         )
 
         if not req.ok:
@@ -234,11 +231,11 @@ class OxauthPatcher(BasePatcher):
         out, err, retcode = generate_openid_keys(jks_pass, jks_fn, jks_dn, exp=exp_hours)
 
         if retcode != 0 or err:
-            logger.error("Unable to generate keys; reason={}".format(err))
+            logger.error(f"Unable to generate keys; reason={err.decode()}")
             return
 
         with open("/etc/certs/oxauth-keys.json", "w") as f:
-            f.write(out)
+            f.write(out.decode())
 
         try:
             new_keys = json.loads(out)

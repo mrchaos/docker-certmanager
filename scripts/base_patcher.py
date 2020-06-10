@@ -18,7 +18,7 @@ class BasePatcher(object):
         self.opts = opts
 
     def _patch_keystore(self, prefix, hostname, passwd):
-        keystore_fn = "/etc/certs/{}.jks".format(prefix)
+        keystore_fn = f"/etc/certs/{prefix}.jks"
         files_exist = os.path.isfile(keystore_fn)
 
         if self.source == FROM_FILES and not files_exist:
@@ -35,8 +35,8 @@ class BasePatcher(object):
         return keystore_fn
 
     def _patch_cert_key(self, prefix, cert_passwd):
-        cert_fn = "/etc/certs/{}.crt".format(prefix)
-        key_fn = "/etc/certs/{}.key".format(prefix)
+        cert_fn = f"/etc/certs/{prefix}.crt"
+        key_fn = f"/etc/certs/{prefix}.key"
         files_exist = os.path.isfile(cert_fn) and os.path.isfile(key_fn)
 
         if self.source == FROM_FILES and not files_exist:
