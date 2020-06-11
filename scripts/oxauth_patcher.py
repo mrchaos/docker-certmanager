@@ -1,8 +1,16 @@
+import contextlib
 import json
 import logging.config
 import os
+import sys
+import tarfile
 import time
+from tempfile import TemporaryFile
 
+import docker
+from kubernetes import client
+from kubernetes import config
+from kubernetes.stream import stream
 from ldap3 import Connection
 from ldap3 import Server
 from ldap3 import BASE
@@ -152,6 +160,176 @@ class CouchbasePersistence(BasePersistence):
         return True
 
 
+class BaseClient(object):
+    def get_oxauth_containers(self):
+        """Gets oxAuth containers.
+
+        Subclass __MUST__ implement this method.
+        """
+        raise NotImplementedError
+
+    def get_container_ip(self, container):
+        """Gets container's IP address.
+
+        Subclass __MUST__ implement this method.
+        """
+        raise NotImplementedError
+
+    def get_container_name(self, container):
+        """Gets container's IP name.
+
+        Subclass __MUST__ implement this method.
+        """
+        raise NotImplementedError
+
+    def copy_to_container(self, container, path):
+        """Copy path to container.
+
+        Subclass __MUST__ implement this method.
+        """
+        raise NotImplementedError
+
+    def exec_cmd(self, container, cmd):
+        raise NotImplementedError
+
+
+class DockerClient(BaseClient):
+    def __init__(self, base_url="unix://var/run/docker.sock"):
+        self.client = docker.DockerClient(base_url=base_url)
+
+    def get_oxauth_containers(self):
+        return self.client.containers.list(filters={'label': 'APP_NAME=oxauth'})
+
+    def get_container_ip(self, container):
+        for _, network in container.attrs["NetworkSettings"]["Networks"].items():
+            return network["IPAddress"]
+
+    def get_container_name(self, container):
+        return container.name
+
+    def copy_to_container(self, container, path):
+        src = os.path.basename(path)
+        dirname = os.path.dirname(path)
+
+        os.chdir(dirname)
+
+        with tarfile.open(src + ".tar", "w:gz") as tar:
+            tar.add(src)
+
+        with open(src + ".tar", "rb") as f:
+            payload = f.read()
+
+            # create directory first
+            container.exec_run("mkdir -p {}".format(dirname))
+
+            # copy file
+            container.put_archive(os.path.dirname(path), payload)
+
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(src + ".tar")
+
+    def exec_cmd(self, container, cmd):
+        container.exec_run(cmd)
+
+
+class KubernetesClient(BaseClient):
+    def __init__(self):
+        config_loaded = False
+
+        try:
+            config.load_incluster_config()
+            config_loaded = True
+        except config.config_exception.ConfigException:
+            logger.warn("Unable to load in-cluster configuration; trying to load from Kube config file")
+            try:
+                config.load_kube_config()
+                config_loaded = True
+            except (IOError, config.config_exception.ConfigException) as exc:
+                logger.warn("Unable to load Kube config; reason={}".format(exc))
+
+        if not config_loaded:
+            logger.error("Unable to load in-cluster or Kube config")
+            sys.exit(1)
+
+        cli = client.CoreV1Api()
+        cli.api_client.configuration.assert_hostname = False
+        self.client = cli
+
+    def get_oxauth_containers(self):
+        return self.client.list_pod_for_all_namespaces(
+            label_selector='APP_NAME=oxauth'
+        ).items
+
+    def get_container_ip(self, container):
+        return container.status.pod_ip
+
+    def get_container_name(self, container):
+        return container.metadata.name
+
+    def copy_to_container(self, container, path):
+        # make sure parent directory is created first
+        resp = stream(
+            self.client.connect_get_namespaced_pod_exec,
+            container.metadata.name,
+            container.metadata.namespace,
+            # command=["/bin/sh", "-c", "mkdir -p {}".format(os.path.dirname(path))],
+            command=["mkdir -p {}".format(os.path.dirname(path))],
+            stderr=True,
+            stdin=True,
+            stdout=True,
+            tty=False,
+        )
+
+        # copy file implementation
+        resp = stream(
+            self.client.connect_get_namespaced_pod_exec,
+            container.metadata.name,
+            container.metadata.namespace,
+            command=["tar", "xvf", "-", "-C", "/"],
+            stderr=True,
+            stdin=True,
+            stdout=True,
+            tty=False,
+            _preload_content=False,
+        )
+
+        with TemporaryFile() as tar_buffer:
+            with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
+                tar.add(path)
+
+            tar_buffer.seek(0)
+            commands = []
+            commands.append(tar_buffer.read())
+
+            while resp.is_open():
+                resp.update(timeout=1)
+                if resp.peek_stdout():
+                    # logger.info("STDOUT: %s" % resp.read_stdout())
+                    pass
+                if resp.peek_stderr():
+                    # logger.info("STDERR: %s" % resp.read_stderr())
+                    pass
+                if commands:
+                    c = commands.pop(0)
+                    resp.write_stdin(c)
+                else:
+                    break
+            resp.close()
+
+    def exec_cmd(self, container, cmd):
+        stream(
+            self.client.connect_get_namespaced_pod_exec,
+            container.metadata.name,
+            container.metadata.namespace,
+            # command=["/bin/sh", "-c", cmd],
+            command=[cmd],
+            stderr=True,
+            stdin=True,
+            stdout=True,
+            tty=False,
+        )
+
+
 class OxauthPatcher(BasePatcher):
     def __init__(self, manager, source, dry_run, **opts):
         super(OxauthPatcher, self).__init__(manager, source, dry_run, **opts)
@@ -186,6 +364,12 @@ class OxauthPatcher(BasePatcher):
         self.backend = backend_cls(host, user, password)
         self.rotation_interval = opts.get("interval", 48)
 
+        metadata = os.environ.get("GLUU_CONTAINER_METADATA", "docker")
+        if metadata == "kubernetes":
+            self.meta_client = KubernetesClient()
+        else:
+            self.meta_client = DockerClient()
+
     def patch(self):
         config = self.backend.get_oxauth_config()
 
@@ -196,6 +380,7 @@ class OxauthPatcher(BasePatcher):
 
         jks_pass = self.manager.secret.get("oxauth_openid_jks_pass")
         jks_fn = self.manager.config.get("oxauth_openid_jks_fn")
+        jwks_fn = "/etc/certs/oxauth-keys.json"
         jks_dn = r"{}".format(self.manager.config.get("default_openid_jks_dn_name"))
 
         ox_rev = int(config["oxRevision"])
@@ -218,14 +403,8 @@ class OxauthPatcher(BasePatcher):
             "keyStoreSecret": jks_pass,
         })
 
-        try:
-            conf_webkeys = json.loads(config["oxAuthConfWebKeys"])
-        except TypeError:  # not string/buffer
-            conf_webkeys = config["oxAuthConfWebKeys"]
-        except (KeyError, IndexError):
-            conf_webkeys = {"keys": []}
-
-        exp_hours = int(self.rotation_interval) + (conf_dynamic["idTokenLifetime"] / 3600)
+        # exp_hours = int(self.rotation_interval) + (conf_dynamic["idTokenLifetime"] / 3600)
+        exp_hours = int(self.rotation_interval)
 
         logger.info("Generating /etc/certs/oxauth-keys.json and /etc/certs/oxauth-keys.jks")
         out, err, retcode = generate_openid_keys(jks_pass, jks_fn, jks_dn, exp=exp_hours)
@@ -234,30 +413,61 @@ class OxauthPatcher(BasePatcher):
             logger.error(f"Unable to generate keys; reason={err.decode()}")
             return
 
-        with open("/etc/certs/oxauth-keys.json", "w") as f:
+        with open(jwks_fn, "w") as f:
             f.write(out.decode())
 
+        if self.dry_run:
+            return
+
+        oxauth_containers = self.meta_client.get_oxauth_containers()
+        if not oxauth_containers:
+            logger.warning("Unable to find any oxAuth container; make sure "
+                           "to deploy oxAuth and set APP_NAME=oxauth "
+                           "label on container level")
+            return
+
+        for container in oxauth_containers:
+            name = self.meta_client.get_container_name(container)
+
+            logger.info(f"creating backup of {name}:/etc/certs/oxauth-keys.jks")
+            self.meta_client.exec_cmd(container, "cp /etc/certs/oxauth-keys.jks /etc/certs/oxauth-keys.jks.backup")
+            logger.info(f"creating new {name}:/etc/certs/oxauth-keys.jks")
+            self.meta_client.copy_to_container(container, jks_fn)
+
+            logger.info(f"creating backup of {name}:/etc/certs/oxauth-keys.json")
+            self.meta_client.exec_cmd(container, "cp /etc/certs/oxauth-keys.json /etc/certs/oxauth-keys.json.backup")
+            logger.info(f"creating new {name}:/etc/certs/oxauth-keys.json")
+            self.meta_client.copy_to_container(container, jwks_fn)
+
         try:
-            new_keys = json.loads(out)
-            merged_webkeys = merge_keys(new_keys, conf_webkeys)
+            keys = json.loads(out)
 
-            if self.dry_run:
-                return
-
+            logger.info("modifying oxAuth configuration")
             ox_modified = self.backend.modify_oxauth_config(
                 config["id"],
                 ox_rev + 1,
                 conf_dynamic,
-                merged_webkeys,
+                keys,
             )
 
-            if all([ox_modified,
-                    self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))]):
-                self.manager.config.set("oxauth_key_rotated_at", int(time.time()))
-                self.manager.secret.set("oxauth_openid_jks_pass", jks_pass)
-                self.manager.secret.set(
-                    "oxauth_openid_key_base64",
-                    generate_base64_contents(json.dumps(merged_webkeys)),
-                )
-        except (TypeError, ValueError) as exc:
+            if not ox_modified:
+                # restore jks and jwks
+                logger.warning("failed to modify oxAuth configuration")
+                for container in oxauth_containers:
+                    name = self.meta_client.get_container_name(container)
+                    logger.info(f"restoring backup of {name}:/etc/certs/oxauth-keys.jks")
+                    self.meta_client.exec_cmd(container, "cp /etc/certs/oxauth-keys.jks.backup /etc/certs/oxauth-keys.jks")
+                    logger.info(f"restoring backup of {name}:/etc/certs/oxauth-keys.json")
+                    self.meta_client.exec_cmd(container, "cp /etc/certs/oxauth-keys.json.backup /etc/certs/oxauth-keys.json")
+                return
+
+            self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
+            self.manager.config.set("oxauth_key_rotated_at", int(time.time()))
+            self.manager.secret.set("oxauth_openid_jks_pass", jks_pass)
+            # jwks
+            self.manager.secret.set(
+                "oxauth_openid_key_base64",
+                generate_base64_contents(json.dumps(keys)),
+            )
+        except (TypeError, ValueError,) as exc:
             logger.warning(f"Unable to get public keys; reason={exc}")
