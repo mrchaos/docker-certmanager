@@ -82,4 +82,4 @@ def patch(service, source, dry_run, opts):
 
 
 if __name__ == "__main__":
-    cli()
+    cli(prog_name="certman")

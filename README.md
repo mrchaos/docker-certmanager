@@ -6,7 +6,7 @@ The container designed to run as one-time command (or Job in kubernetes world).
 ## Versions
 
 - Stable: `N/A`
-- Unstable: `gluufederation/certman:4.1.1_dev`
+- Unstable: `gluufederation/certman:4.2.0_dev`
 
 Refer to [Changelog](./CHANGES.md) for details on new features, bug fixes, or older releases.
 
@@ -61,7 +61,7 @@ The following commands are supported by the container:
 Updates X.509 certificates and/or crypto keys related to the service.
 
 ```text
-Usage: entrypoint.py patch [OPTIONS] SERVICE
+Usage: certman patch [OPTIONS] SERVICE
 
   Patch cert and/or crypto keys for the targeted service.
 
