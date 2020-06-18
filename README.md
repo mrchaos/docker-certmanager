@@ -133,6 +133,19 @@ Supported services:
     - `application-cn`: CommonName for application certificate (default to `localhost`)
     - `admin-cn`: CommonName for admin certificate (default to `localhost`)
 
+1.  `ldap`
+
+    Re-generate:
+
+    - `/etc/certs/opendj.crt`
+    - `/etc/certs/opendj.key`
+    - `/etc/certs/opendj.pem`
+    - `/etc/certs/opendj.pkcs12`
+
+    Options:
+
+    - `subj-alt-name`: Subject Alternative Name (SAN) for certificate (default to `localhost`)
+
 Example:
 
 ```sh

@@ -33,21 +33,3 @@ LOGGING_CONFIG = {
     #     "handlers": ["console"],
     # },
 }
-
-#: source `from-files` constant
-FROM_FILES = "from-files"
-
-#: source `self-generate` constant
-SELF_GENERATE = "self-generate"
-
-SERVICE_NAMES = (
-    "web",
-    "oxshibboleth",
-    "oxauth",
-    "oxd",
-)
-
-SOURCE_TYPES = (
-    FROM_FILES,
-    SELF_GENERATE,
-)

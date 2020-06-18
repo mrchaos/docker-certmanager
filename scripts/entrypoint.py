@@ -6,9 +6,7 @@ import click
 from pygluu.containerlib import get_manager
 
 from settings import LOGGING_CONFIG
-# from settings import SELF_GENERATE
-from settings import SERVICE_NAMES
-# from settings import SOURCE_TYPES
+from ldap_handler import LdapHandler
 from oxauth_handler import OxauthHandler
 from oxd_handler import OxdHandler
 from oxshibboleth_handler import OxshibbolethHandler
@@ -16,6 +14,14 @@ from web_handler import WebHandler
 
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("certman")
+
+SERVICE_NAMES = (
+    "web",
+    "oxshibboleth",
+    "oxauth",
+    "oxd",
+    "ldap",
+)
 
 # ============
 # CLI commands
@@ -58,6 +64,7 @@ def patch(service, dry_run, opts):
         "oxshibboleth": OxshibbolethHandler,
         "oxauth": OxauthHandler,
         "oxd": OxdHandler,
+        "ldap": LdapHandler,
     }
 
     logger.info(f"Processing updates for service {service}")
