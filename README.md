@@ -47,6 +47,7 @@ The following environment variables are supported by the container:
 - `GLUU_COUCHBASE_USER`: Username of Couchbase server (default to `admin`); required if `GLUU_PERSISTENCE_TYPE` is set to `couchbase` or `hybrid`.
 - `GLUU_COUCHBASE_CERT_FILE`: Couchbase root certificate location (default to `/etc/certs/couchbase.crt`); required if `GLUU_PERSISTENCE_TYPE` is set to `couchbase` or `hybrid`.
 - `GLUU_COUCHBASE_PASSWORD_FILE`: Path to file contains Couchbase password (default to `/etc/gluu/conf/couchbase_password`); required if `GLUU_PERSISTENCE_TYPE` is set to `couchbase` or `hybrid`.
+- `GLUU_CONTAINER_METADATA`: The name of scheduler to pull container metadata (one of `docker` or `kubernetes`; default to `docker`).
 
 ## Usage
 
@@ -116,6 +117,22 @@ Supported services:
     - `/etc/certs/idp-encryption.crt`
     - `/etc/certs/idp-encryption.key`
 
+1.  `oxd`
+
+    Re-generate:
+
+    - `/etc/certs/oxd_application.crt`
+    - `/etc/certs/oxd_application.key`
+    - `/etc/certs/oxd_application.keystore`
+    - `/etc/certs/oxd_admin.crt`
+    - `/etc/certs/oxd_admin.key`
+    - `/etc/certs/oxd_admin.keystore`
+
+    Options:
+
+    - `application-cn`: CommonName for application certificate (default to `localhost`)
+    - `admin-cn`: CommonName for admin certificate (default to `localhost`)
+
 Example:
 
 ```sh
@@ -130,5 +147,6 @@ docker run \
     -v $PWD/vault_secret_id.txt:/etc/certs/vault_secret_id \
     -v $PWD/ssl.crt:/etc/certs/gluu_https.crt \
     -v $PWD/ssl.key:/etc/certs/gluu_https.key \
+    -v /var/run/docker.sock:/var/run/docker.sock \
     gluufederation/certman:4.2.0_dev patch web --opts source:from-files
 ```
