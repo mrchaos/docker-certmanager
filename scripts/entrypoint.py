@@ -13,7 +13,7 @@ from oxshibboleth_handler import OxshibbolethHandler
 from web_handler import WebHandler
 
 logging.config.dictConfig(LOGGING_CONFIG)
-logger = logging.getLogger("certman")
+logger = logging.getLogger("certmanager")
 
 SERVICE_NAMES = (
     "web",
@@ -83,4 +83,4 @@ def patch(service, dry_run, opts):
 
 
 if __name__ == "__main__":
-    cli(prog_name="certman")
+    cli(prog_name="certmanager")

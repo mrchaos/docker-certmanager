@@ -6,7 +6,7 @@ from base_handler import BaseHandler
 from settings import LOGGING_CONFIG
 
 logging.config.dictConfig(LOGGING_CONFIG)
-logger = logging.getLogger("certman")
+logger = logging.getLogger("certmanager")
 
 
 class OxshibbolethHandler(BaseHandler):

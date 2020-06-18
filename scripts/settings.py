@@ -17,7 +17,7 @@ LOGGING_CONFIG = {
             "level": "INFO",
             "propagate": True,
         },
-        "certman": {
+        "certmanager": {
             "handlers": ["console"],
             "level": "INFO",
             "propagate": False,

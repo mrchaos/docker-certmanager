@@ -6,7 +6,7 @@ The container designed to run as one-time command (or Job in kubernetes world).
 ## Versions
 
 - Stable: `N/A`
-- Unstable: `gluufederation/certman:4.2.0_dev`
+- Unstable: `gluufederation/certmanager:4.2.0_dev`
 
 Refer to [Changelog](./CHANGES.md) for details on new features, bug fixes, or older releases.
 
@@ -62,7 +62,7 @@ The following commands are supported by the container:
 Updates X.509 certificates and/or crypto keys related to the service.
 
 ```text
-Usage: certman patch [OPTIONS] SERVICE
+Usage: certmanager patch [OPTIONS] SERVICE
 
   Patch cert and/or crypto keys for the targeted service.
 
@@ -81,7 +81,7 @@ Global options:
 
 Supported services:
 
-1.  `web` (`nginx` container or ingress)
+1.  `web` (nginx container or ingress)
 
     Load from existing or re-generate:
 
@@ -161,5 +161,5 @@ docker run \
     -v $PWD/ssl.crt:/etc/certs/gluu_https.crt \
     -v $PWD/ssl.key:/etc/certs/gluu_https.key \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    gluufederation/certman:4.2.0_dev patch web --opts source:from-files
+    gluufederation/certmanager:4.2.0_dev patch web --opts source:from-files
 ```

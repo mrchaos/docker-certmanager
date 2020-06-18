@@ -5,7 +5,7 @@ from utils import generate_keystore
 from utils import generate_ssl_certkey
 
 logging.config.dictConfig(LOGGING_CONFIG)
-logger = logging.getLogger("certman")
+logger = logging.getLogger("certmanager")
 
 
 class BaseHandler(object):

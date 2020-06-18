@@ -1,5 +1,5 @@
 GLUU_VERSION=4.2.0
-IMAGE_NAME=gluufederation/certman
+IMAGE_NAME=gluufederation/certmanager
 UNSTABLE_VERSION=dev
 
 build-dev:

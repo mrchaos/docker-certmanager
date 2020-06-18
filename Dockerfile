@@ -100,12 +100,12 @@ ENV GLUU_WAIT_MAX_TIME=300 \
 # misc
 # ====
 
-LABEL name="Certman" \
+LABEL name="Certmanager" \
     maintainer="Gluu Inc. <support@gluu.org>" \
     vendor="Gluu Federation" \
     version="4.2.0" \
     release="dev" \
-    summary="Gluu Certman" \
+    summary="Gluu Certmanager" \
     description="Manage certs and crypto keys for Gluu Server"
 
 COPY scripts /app/scripts
