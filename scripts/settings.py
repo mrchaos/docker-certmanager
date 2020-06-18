@@ -44,6 +44,7 @@ SERVICE_NAMES = (
     "web",
     "oxshibboleth",
     "oxauth",
+    "oxd",
 )
 
 SOURCE_TYPES = (

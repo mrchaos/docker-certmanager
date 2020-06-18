@@ -10,6 +10,7 @@ from settings import SELF_GENERATE
 from settings import SERVICE_NAMES
 from settings import SOURCE_TYPES
 from oxauth_patcher import OxauthPatcher
+from oxd_patcher import OxdPatcher
 from oxshibboleth_patcher import OxshibbolethPatcher
 from web_patcher import WebPatcher
 
@@ -62,6 +63,7 @@ def patch(service, source, dry_run, opts):
         "web": WebPatcher,
         "oxshibboleth": OxshibbolethPatcher,
         "oxauth": OxauthPatcher,
+        "oxd": OxdPatcher,
     }
 
     logger.info(
