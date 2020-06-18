@@ -1,17 +1,15 @@
 import logging.config
-import os
 
 from pygluu.containerlib.utils import exec_cmd
 
-from base_patcher import BasePatcher
-from settings import FROM_FILES
+from base_handler import BaseHandler
 from settings import LOGGING_CONFIG
 
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("certman")
 
 
-class OxshibbolethPatcher(BasePatcher):
+class OxshibbolethHandler(BaseHandler):
     @classmethod
     def gen_idp3_key(cls, storepass):
         cmd = (
@@ -27,20 +25,6 @@ class OxshibbolethPatcher(BasePatcher):
     def _patch_shib_sealer(self, passwd):
         sealer_jks = "/etc/certs/sealer.jks"
         sealer_kver = "/etc/certs/sealer.kver"
-
-        files_exist = os.path.isfile(sealer_jks) and os.path.isfile(sealer_kver)
-
-        if self.source == FROM_FILES and not files_exist:
-            logger.warning(
-                f"Unable to find {sealer_jks} and {sealer_kver} files"
-            )
-            return "", ""
-
-        elif self.source == FROM_FILES and files_exist:
-            logger.info(f"Using existing {sealer_jks} and {sealer_kver} files")
-            return sealer_jks, sealer_kver
-
-        # probably self-generate
         logger.info(f"Generating new {sealer_jks} and {sealer_kver} files")
         self.gen_idp3_key(passwd)
         return sealer_jks, sealer_kver

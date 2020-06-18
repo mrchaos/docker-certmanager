@@ -2,14 +2,14 @@ import logging.config
 
 from pygluu.containerlib.utils import exec_cmd
 
-from base_patcher import BasePatcher
+from base_handler import BaseHandler
 from settings import LOGGING_CONFIG
 
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("certman")
 
 
-class OxdPatcher(BasePatcher):
+class OxdHandler(BaseHandler):
     @staticmethod
     def generate_x509(cert_file, key_file, cert_cn):
         out, err, code = exec_cmd(

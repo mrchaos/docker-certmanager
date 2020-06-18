@@ -24,7 +24,7 @@ from pygluu.containerlib.utils import encode_text
 from pygluu.containerlib.utils import exec_cmd
 from pygluu.containerlib.utils import generate_base64_contents
 
-from base_patcher import BasePatcher
+from base_handler import BaseHandler
 from settings import LOGGING_CONFIG
 
 logging.config.dictConfig(LOGGING_CONFIG)
@@ -330,9 +330,9 @@ class KubernetesClient(BaseClient):
         )
 
 
-class OxauthPatcher(BasePatcher):
-    def __init__(self, manager, source, dry_run, **opts):
-        super(OxauthPatcher, self).__init__(manager, source, dry_run, **opts)
+class OxauthHandler(BaseHandler):
+    def __init__(self, manager, dry_run, **opts):
+        super(OxauthHandler, self).__init__(manager, dry_run, **opts)
 
         persistence_type = os.environ.get("GLUU_PERSISTENCE_TYPE", "ldap")
         ldap_mapping = os.environ.get("GLUU_PERSISTENCE_LDAP_MAPPING", "default")

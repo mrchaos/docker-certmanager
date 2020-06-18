@@ -6,13 +6,13 @@ import click
 from pygluu.containerlib import get_manager
 
 from settings import LOGGING_CONFIG
-from settings import SELF_GENERATE
+# from settings import SELF_GENERATE
 from settings import SERVICE_NAMES
-from settings import SOURCE_TYPES
-from oxauth_patcher import OxauthPatcher
-from oxd_patcher import OxdPatcher
-from oxshibboleth_patcher import OxshibbolethPatcher
-from web_patcher import WebPatcher
+# from settings import SOURCE_TYPES
+from oxauth_handler import OxauthHandler
+from oxd_handler import OxdHandler
+from oxshibboleth_handler import OxshibbolethHandler
+from web_handler import WebHandler
 
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("certman")
@@ -35,12 +35,6 @@ def cli():
     type=click.Choice(SERVICE_NAMES),
 )
 @click.option(
-    "--source",
-    help="Source type (default to self-generate).",
-    type=click.Choice(SOURCE_TYPES),
-    default=SELF_GENERATE,
-)
-@click.option(
     "--dry-run",
     help="Generate save certs and/or crypto keys only without saving it to external backends.",
     is_flag=True,
@@ -51,7 +45,7 @@ def cli():
     multiple=True,
     metavar="KEY:VALUE",
 )
-def patch(service, source, dry_run, opts):
+def patch(service, dry_run, opts):
     """Patch cert and/or crypto keys for the targeted service.
     """
     manager = get_manager()
@@ -60,15 +54,13 @@ def patch(service, source, dry_run, opts):
         logger.warning("Dry-run mode is enabled!")
 
     callback_classes = {
-        "web": WebPatcher,
-        "oxshibboleth": OxshibbolethPatcher,
-        "oxauth": OxauthPatcher,
-        "oxd": OxdPatcher,
+        "web": WebHandler,
+        "oxshibboleth": OxshibbolethHandler,
+        "oxauth": OxauthHandler,
+        "oxd": OxdHandler,
     }
 
-    logger.info(
-        f"Processing updates for service {service} using source type {source}"
-    )
+    logger.info(f"Processing updates for service {service}")
 
     _opts = {}
     for opt in opts:
@@ -80,7 +72,7 @@ def patch(service, source, dry_run, opts):
             v = ""
 
     callback_cls = callback_classes[service]
-    callback_cls(manager, source, dry_run, **_opts).patch()
+    callback_cls(manager, dry_run, **_opts).patch()
 
 
 if __name__ == "__main__":

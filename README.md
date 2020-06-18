@@ -66,8 +66,6 @@ Usage: certman patch [OPTIONS] SERVICE
   Patch cert and/or crypto keys for the targeted service.
 
 Options:
-  --source [from-files|self-generate]
-                                  Source type (default to self-generate).
   --dry-run                       Generate save certs and/or crypto keys only
                                   without saving it to external backends.
   --opts KEY:VALUE                Options for targeted service (can be set
@@ -77,7 +75,6 @@ Options:
 
 Global options:
 
-- `--source`
 - `--dry-run`
 - `--opts`: service-dependent options, example: `--opts interval:48`
 
@@ -89,6 +86,10 @@ Supported services:
 
     - `/etc/certs/gluu_https.crt`
     - `/etc/certs/gluu_https.key`.
+
+    Options:
+
+    - `source`: `from-files` or empty string
 
 1.  `oxauth`
 
@@ -103,7 +104,7 @@ Supported services:
 
 1.  `oxshibboleth`
 
-    Load from existing or re-generate:
+    Re-generate:
 
     - `/etc/certs/shibIDP.crt`
     - `/etc/certs/shibIDP.key`
@@ -127,22 +128,7 @@ docker run \
     -e GLUU_SECRET_VAULT_HOST=vault \
     -v $PWD/vault_role_id.txt:/etc/certs/vault_role_id \
     -v $PWD/vault_secret_id.txt:/etc/certs/vault_secret_id \
-    gluufederation/certman:4.1.1_dev patch web --source self-generate
-```
-
-Or
-
-```sh
-docker run \
-    --rm \
-    --network container:consul \
-    -e GLUU_CONFIG_ADAPTER=consul \
-    -e GLUU_CONFIG_CONSUL_HOST=consul \
-    -e GLUU_SECRET_ADAPTER=vault \
-    -e GLUU_SECRET_VAULT_HOST=vault \
-    -v $PWD/vault_role_id.txt:/etc/certs/vault_role_id \
-    -v $PWD/vault_secret_id.txt:/etc/certs/vault_secret_id \
     -v $PWD/ssl.crt:/etc/certs/gluu_https.crt \
     -v $PWD/ssl.key:/etc/certs/gluu_https.key \
-    gluufederation/certman:4.1.1_dev patch web --source from-files
+    gluufederation/certman:4.2.0_dev patch web --opts source:from-files
 ```
