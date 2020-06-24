@@ -1,3 +1,2 @@
 click==6.7
-docker==3.7.2
--e git+https://github.com/GluuFederation/pygluu-containerlib@61e6c2dc3905f96b02aff32eca85f19d842f8ea7#egg=pygluu-containerlib
+-e git+https://github.com/GluuFederation/pygluu-containerlib@14dfc2753e6100a45b62354e543673a79b192fff#egg=pygluu-containerlib

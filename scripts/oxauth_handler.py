@@ -1,16 +1,8 @@
-import contextlib
 import json
 import logging.config
 import os
-import sys
-import tarfile
 import time
-from tempfile import TemporaryFile
 
-import docker
-from kubernetes import client
-from kubernetes import config
-from kubernetes.stream import stream
 from ldap3 import Connection
 from ldap3 import Server
 from ldap3 import BASE
@@ -23,6 +15,8 @@ from pygluu.containerlib.utils import decode_text
 from pygluu.containerlib.utils import encode_text
 from pygluu.containerlib.utils import exec_cmd
 from pygluu.containerlib.utils import generate_base64_contents
+from pygluu.containerlib.meta import DockerMeta
+from pygluu.containerlib.meta import KubernetesMeta
 
 from base_handler import BaseHandler
 from settings import LOGGING_CONFIG
@@ -160,180 +154,6 @@ class CouchbasePersistence(BasePersistence):
         return True
 
 
-class BaseClient(object):
-    def get_oxauth_containers(self):
-        """Gets oxAuth containers.
-
-        Subclass __MUST__ implement this method.
-        """
-        raise NotImplementedError
-
-    def get_container_ip(self, container):
-        """Gets container's IP address.
-
-        Subclass __MUST__ implement this method.
-        """
-        raise NotImplementedError
-
-    def get_container_name(self, container):
-        """Gets container's IP name.
-
-        Subclass __MUST__ implement this method.
-        """
-        raise NotImplementedError
-
-    def copy_to_container(self, container, path):
-        """Copy path to container.
-
-        Subclass __MUST__ implement this method.
-        """
-        raise NotImplementedError
-
-    def exec_cmd(self, container, cmd):
-        raise NotImplementedError
-
-
-class DockerClient(BaseClient):
-    def __init__(self, base_url="unix://var/run/docker.sock"):
-        self.client = docker.DockerClient(base_url=base_url)
-
-    def get_oxauth_containers(self):
-        return self.client.containers.list(filters={'label': 'APP_NAME=oxauth'})
-
-    def get_container_ip(self, container):
-        for _, network in container.attrs["NetworkSettings"]["Networks"].items():
-            return network["IPAddress"]
-
-    def get_container_name(self, container):
-        return container.name
-
-    def copy_to_container(self, container, path):
-        src = os.path.basename(path)
-        dirname = os.path.dirname(path)
-
-        os.chdir(dirname)
-
-        with tarfile.open(src + ".tar", "w:gz") as tar:
-            tar.add(src)
-
-        with open(src + ".tar", "rb") as f:
-            payload = f.read()
-
-            # create directory first
-            container.exec_run("mkdir -p {}".format(dirname))
-
-            # copy file
-            container.put_archive(os.path.dirname(path), payload)
-
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(src + ".tar")
-
-    def exec_cmd(self, container, cmd):
-        container.exec_run(cmd)
-
-
-class KubernetesClient(BaseClient):
-    def __init__(self):
-        config_loaded = False
-
-        try:
-            config.load_incluster_config()
-            config_loaded = True
-        except config.config_exception.ConfigException:
-            logger.warn("Unable to load in-cluster configuration; trying to load from Kube config file")
-            try:
-                config.load_kube_config()
-                config_loaded = True
-            except (IOError, config.config_exception.ConfigException) as exc:
-                logger.warn("Unable to load Kube config; reason={}".format(exc))
-
-        if not config_loaded:
-            logger.error("Unable to load in-cluster or Kube config")
-            sys.exit(1)
-
-        cli = client.CoreV1Api()
-        cli.api_client.configuration.assert_hostname = False
-        self.client = cli
-
-    def get_oxauth_containers(self):
-        return self.client.list_pod_for_all_namespaces(
-            label_selector='APP_NAME=oxauth'
-        ).items
-
-    def get_container_ip(self, container):
-        return container.status.pod_ip
-
-    def get_container_name(self, container):
-        return container.metadata.name
-
-    def copy_to_container(self, container, path):
-        # make sure parent directory is created first
-        resp = stream(
-            self.client.connect_get_namespaced_pod_exec,
-            container.metadata.name,
-            container.metadata.namespace,
-            # command=["/bin/sh", "-c", "mkdir -p {}".format(os.path.dirname(path))],
-            command=["mkdir -p {}".format(os.path.dirname(path))],
-            stderr=True,
-            stdin=True,
-            stdout=True,
-            tty=False,
-        )
-
-        # copy file implementation
-        resp = stream(
-            self.client.connect_get_namespaced_pod_exec,
-            container.metadata.name,
-            container.metadata.namespace,
-            command=["tar", "xvf", "-", "-C", "/"],
-            stderr=True,
-            stdin=True,
-            stdout=True,
-            tty=False,
-            _preload_content=False,
-        )
-
-        with TemporaryFile() as tar_buffer:
-            with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
-                tar.add(path)
-
-            tar_buffer.seek(0)
-            commands = []
-            commands.append(tar_buffer.read())
-
-            while resp.is_open():
-                resp.update(timeout=1)
-                if resp.peek_stdout():
-                    # logger.info("STDOUT: %s" % resp.read_stdout())
-                    pass
-                if resp.peek_stderr():
-                    # logger.info("STDERR: %s" % resp.read_stderr())
-                    pass
-                if commands:
-                    c = commands.pop(0)
-                    try:
-                        resp.write_stdin(c.decode())
-                    except UnicodeDecodeError:
-                        # likely bytes from a binary
-                        resp.write_stdin(c.decode("ISO-8859-1"))
-                else:
-                    break
-            resp.close()
-
-    def exec_cmd(self, container, cmd):
-        stream(
-            self.client.connect_get_namespaced_pod_exec,
-            container.metadata.name,
-            container.metadata.namespace,
-            # command=["/bin/sh", "-c", cmd],
-            command=[cmd],
-            stderr=True,
-            stdin=True,
-            stdout=True,
-            tty=False,
-        )
-
-
 class OxauthHandler(BaseHandler):
     def __init__(self, manager, dry_run, **opts):
         super(OxauthHandler, self).__init__(manager, dry_run, **opts)
@@ -370,9 +190,9 @@ class OxauthHandler(BaseHandler):
 
         metadata = os.environ.get("GLUU_CONTAINER_METADATA", "docker")
         if metadata == "kubernetes":
-            self.meta_client = KubernetesClient()
+            self.meta_client = KubernetesMeta()
         else:
-            self.meta_client = DockerClient()
+            self.meta_client = DockerMeta()
 
     def patch(self):
         config = self.backend.get_oxauth_config()
@@ -423,7 +243,7 @@ class OxauthHandler(BaseHandler):
         if self.dry_run:
             return
 
-        oxauth_containers = self.meta_client.get_oxauth_containers()
+        oxauth_containers = self.meta_client.get_containers("APP_NAME=oxauth")
         if not oxauth_containers:
             logger.warning("Unable to find any oxAuth container; make sure "
                            "to deploy oxAuth and set APP_NAME=oxauth "
