@@ -146,7 +146,7 @@ Supported services:
 
     - `subj-alt-name`: Subject Alternative Name (SAN) for certificate (default to `localhost`)
 
-Example:
+Docker example:
 
 ```sh
 docker run \
@@ -162,4 +162,35 @@ docker run \
     -v $PWD/ssl.key:/etc/certs/gluu_https.key \
     -v /var/run/docker.sock:/var/run/docker.sock \
     gluufederation/certmanager:4.2.0_dev patch web --opts source:from-files
+```
+
+Kubernetes CronJob example:
+
+```yaml
+kind: CronJob
+apiVersion: batch/v1beta1
+metadata:
+  name: oxauth-key-rotation
+spec:
+  schedule: "0 */48 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: oxauth-key-rotation
+              image: gluufederation/certmanager:4.2.0_dev
+              resources:
+                requests:
+                  memory: "300Mi"
+                  cpu: "300m"
+                limits:
+                  memory: "300Mi"
+                  cpu: "300m"
+              envFrom:
+                - configMapRef:
+                    name: gluu-config-cm
+              args: ["patch", "oxauth", "--opts", "interval:48"]
+          restartPolicy: Never
 ```
