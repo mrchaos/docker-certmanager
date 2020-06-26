@@ -1,4 +1,9 @@
+import os
+
 from pygluu.containerlib.utils import exec_cmd
+
+DEFAULT_SIG_KEYS = "RS256 RS384 RS512 ES256 ES384 ES512 PS256 PS384 PS512 RSA1_5 RSA-OAEP"
+DEFAULT_ENC_KEYS = DEFAULT_SIG_KEYS
 
 
 def generate_ssl_certkey(suffix, passwd, email, hostname, org_name,
@@ -57,3 +62,36 @@ def generate_keystore(suffix, hostname, keypasswd):
     )
     assert retcode == 0, \
         f"Failed to generate JKS keystore; reason={err.decode()}"
+
+
+def generate_openid_keys(passwd, jks_path, jwks_path, dn, exp=365, sig_keys=DEFAULT_SIG_KEYS, enc_keys=DEFAULT_ENC_KEYS):
+    if os.path.isfile(jks_path):
+        os.unlink(jks_path)
+
+    cmd = (
+        "java -Dlog4j.defaultInitOverride=true "
+        "-jar /app/javalibs/oxauth-client.jar "
+        f"-enc_keys {enc_keys} -sig_keys {sig_keys} "
+        f"-dnname '{dn}' -expiration_hours {exp} "
+        f"-keystore {jks_path} -keypasswd {passwd}"
+    )
+
+    out, err, retcode = exec_cmd(cmd)
+    if retcode == 0:
+        with open(jwks_path, "w") as f:
+            f.write(out.decode())
+    return out, err, retcode
+
+
+def export_openid_keys(keystore, keypasswd, alias, export_file):
+    cmd = " ".join([
+        "java",
+        "-Dlog4j.defaultInitOverride=true",
+        "-cp /app/javalibs/oxauth-client.jar",
+        "org.gluu.oxauth.util.KeyExporter",
+        "-keystore {}".format(keystore),
+        "-keypasswd {}".format(keypasswd),
+        "-alias {}".format(alias),
+        "-exportfile {}".format(export_file),
+    ])
+    return exec_cmd(cmd)

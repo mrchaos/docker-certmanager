@@ -10,18 +10,21 @@ from ldap_handler import LdapHandler
 from oxauth_handler import OxauthHandler
 from oxd_handler import OxdHandler
 from oxshibboleth_handler import OxshibbolethHandler
+from passport_handler import PassportHandler
 from web_handler import WebHandler
 
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("certmanager")
 
-SERVICE_NAMES = (
-    "web",
-    "oxshibboleth",
-    "oxauth",
-    "oxd",
-    "ldap",
-)
+#: Map between service name and its handler class
+SERVICE_MAP = {
+    "web": WebHandler,
+    "oxshibboleth": OxshibbolethHandler,
+    "oxauth": OxauthHandler,
+    "oxd": OxdHandler,
+    "ldap": LdapHandler,
+    "passport": PassportHandler,
+}
 
 # ============
 # CLI commands
@@ -37,8 +40,7 @@ def cli():
 
 @cli.command()
 @click.argument(
-    "service",
-    type=click.Choice(SERVICE_NAMES),
+    "service", type=click.Choice(SERVICE_MAP.keys()),
 )
 @click.option(
     "--dry-run",
@@ -59,14 +61,6 @@ def patch(service, dry_run, opts):
     if dry_run:
         logger.warning("Dry-run mode is enabled!")
 
-    callback_classes = {
-        "web": WebHandler,
-        "oxshibboleth": OxshibbolethHandler,
-        "oxauth": OxauthHandler,
-        "oxd": OxdHandler,
-        "ldap": LdapHandler,
-    }
-
     logger.info(f"Processing updates for service {service}")
 
     _opts = {}
@@ -78,7 +72,7 @@ def patch(service, dry_run, opts):
             k = opt
             v = ""
 
-    callback_cls = callback_classes[service]
+    callback_cls = SERVICE_MAP[service]
     callback_cls(manager, dry_run, **_opts).patch()
 
 
