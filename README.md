@@ -146,6 +146,27 @@ Supported services:
 
     - `subj-alt-name`: Subject Alternative Name (SAN) for certificate (default to `localhost`)
 
+1.  `passport`
+
+    Re-generate:
+
+    - `/etc/certs/passport-rs.jks`
+    - `/etc/certs/passport-rs-keys.json`
+    - `/etc/certs/passport-rp.jks`
+    - `/etc/certs/passport-rp-keys.json`
+    - `/etc/certs/passport-rp.pem`
+    - `/etc/certs/passport-sp.key`
+    - `/etc/certs/passport-sp.crt`
+
+1.  `scim`
+
+    Re-generate:
+
+    - `/etc/certs/scim-rs.jks`
+    - `/etc/certs/scim-rs-keys.json`
+    - `/etc/certs/scim-rp.jks`
+    - `/etc/certs/scim-rp-keys.json`
+
 Docker example:
 
 ```sh
