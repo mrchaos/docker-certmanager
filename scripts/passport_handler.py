@@ -1,3 +1,4 @@
+import base64
 import json
 import logging.config
 import sys
@@ -36,7 +37,7 @@ class PassportHandler(BaseHandler):
                 break
 
         if not self.dry_run:
-            self.manager.secret.from_file("passport_rs_client_base64_jwks", jwks_fn)
+            self.manager.secret.set("passport_rs_client_base64_jwks", base64.b64encode(out))
             self.manager.secret.from_file(
                 "passport_rs_jks_base64", jks_fn, encode=True, binary_mode=True,
             )
@@ -75,7 +76,7 @@ class PassportHandler(BaseHandler):
             sys.exit(1)
 
         if not self.dry_run:
-            self.manager.secret.from_file("passport_rp_client_base64_jwks", jwks_fn)
+            self.manager.secret.set("passport_rp_client_base64_jwks", base64.b64encode(out))
             self.manager.secret.from_file(
                 "passport_rp_jks_base64", jks_fn, encode=True, binary_mode=True,
             )
