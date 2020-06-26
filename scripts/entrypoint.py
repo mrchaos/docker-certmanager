@@ -11,6 +11,7 @@ from oxauth_handler import OxauthHandler
 from oxd_handler import OxdHandler
 from oxshibboleth_handler import OxshibbolethHandler
 from passport_handler import PassportHandler
+from scim_handler import ScimHandler
 from web_handler import WebHandler
 
 logging.config.dictConfig(LOGGING_CONFIG)
@@ -24,6 +25,7 @@ SERVICE_MAP = {
     "oxd": OxdHandler,
     "ldap": LdapHandler,
     "passport": PassportHandler,
+    "scim": ScimHandler,
 }
 
 # ============
