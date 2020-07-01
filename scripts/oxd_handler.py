@@ -55,7 +55,7 @@ class OxdHandler(BaseHandler):
             )
 
         keystore_file = f"/etc/certs/oxd_{conn_type}.keystore"
-        keystore_password = self.manager.secret.get("oxd_{conn_type}_keystore_password")
+        keystore_password = self.manager.secret.get(f"oxd_{conn_type}_keystore_password")
 
         logger.info(f"Generating new {keystore_file} file")
         generated = self.generate_keystore(
