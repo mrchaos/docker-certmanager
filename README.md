@@ -5,7 +5,7 @@ The container designed to run as one-time command (or Job in kubernetes world).
 
 ## Versions
 
-- Stable: `N/A`
+- Stable: `gluufederation/certmanager:4.2.0_01`
 - Unstable: `gluufederation/certmanager:4.2.0_dev`
 
 Refer to [Changelog](./CHANGES.md) for details on new features, bug fixes, or older releases.
@@ -182,7 +182,7 @@ docker run \
     -v $PWD/ssl.crt:/etc/certs/gluu_https.crt \
     -v $PWD/ssl.key:/etc/certs/gluu_https.key \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    gluufederation/certmanager:4.2.0_dev patch web --opts source:from-files
+    gluufederation/certmanager:4.2.0_01 patch web --opts source:from-files
 ```
 
 Kubernetes CronJob example:
@@ -201,7 +201,7 @@ spec:
         spec:
           containers:
             - name: oxauth-key-rotation
-              image: gluufederation/certmanager:4.2.0_dev
+              image: gluufederation/certmanager:4.2.0_01
               resources:
                 requests:
                   memory: "300Mi"
