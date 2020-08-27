@@ -15,6 +15,7 @@ from pygluu.containerlib.utils import decode_text
 from pygluu.containerlib.utils import encode_text
 from pygluu.containerlib.utils import exec_cmd
 from pygluu.containerlib.utils import generate_base64_contents
+from pygluu.containerlib.utils import as_boolean
 from pygluu.containerlib.meta import DockerMeta
 from pygluu.containerlib.meta import KubernetesMeta
 
@@ -187,6 +188,7 @@ class OxauthHandler(BaseHandler):
 
         self.backend = backend_cls(host, user, password)
         self.rotation_interval = opts.get("interval", 48)
+        self.push_keys = as_boolean(opts.get("push-to-container", True))
 
         metadata = os.environ.get("GLUU_CONTAINER_METADATA", "docker")
         if metadata == "kubernetes":
@@ -243,12 +245,17 @@ class OxauthHandler(BaseHandler):
         if self.dry_run:
             return
 
-        oxauth_containers = self.meta_client.get_containers("APP_NAME=oxauth")
-        if not oxauth_containers:
-            logger.warning("Unable to find any oxAuth container; make sure "
-                           "to deploy oxAuth and set APP_NAME=oxauth "
-                           "label on container level")
-            return
+        oxauth_containers = []
+
+        if self.push_keys:
+            oxauth_containers = self.meta_client.get_containers("APP_NAME=oxauth")
+            if not oxauth_containers:
+                logger.warning(
+                    "Unable to find any oxAuth container; make sure "
+                    "to deploy oxAuth and set APP_NAME=oxauth "
+                    "label on container level"
+                )
+                # return
 
         for container in oxauth_containers:
             name = self.meta_client.get_container_name(container)

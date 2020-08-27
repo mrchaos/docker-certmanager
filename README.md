@@ -102,6 +102,7 @@ Supported services:
     Options:
 
     - `interval`: cryto keys expiration time (in hours)
+    - `push-to-container`: whether to _push_ `oxauth-keys.jks` and `oxauth-keys.json` to oxAuth containers (default to `true`)
 
 1.  `oxshibboleth`
 
