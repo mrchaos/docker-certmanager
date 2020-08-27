@@ -5,10 +5,8 @@ The container designed to run as one-time command (or Job in kubernetes world).
 
 ## Versions
 
-- Stable: `gluufederation/certmanager:4.2.0_01`
-- Unstable: `gluufederation/certmanager:4.2.1_dev`
-
-Refer to [Changelog](./CHANGES.md) for details on new features, bug fixes, or older releases.
+See [Releases](https://github.com/GluuFederation/docker-certmanager/releases) for stable versions.
+For bleeding-edge/unstable version, use `gluufederation/certmanager:4.2.1_dev`.
 
 ## Environment Variables
 
