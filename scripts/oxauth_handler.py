@@ -255,7 +255,8 @@ class OxauthHandler(BaseHandler):
                     "to deploy oxAuth and set APP_NAME=oxauth "
                     "label on container level"
                 )
-                # return
+                # exit immediately to avoid persistence/secrets being modified
+                return
 
         for container in oxauth_containers:
             name = self.meta_client.get_container_name(container)
