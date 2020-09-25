@@ -181,7 +181,7 @@ docker run \
     -v $PWD/ssl.crt:/etc/certs/gluu_https.crt \
     -v $PWD/ssl.key:/etc/certs/gluu_https.key \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    gluufederation/certmanager:4.2.0_01 patch web --opts source:from-files
+    gluufederation/certmanager:4.2.1_02 patch web --opts source:from-files
 ```
 
 Kubernetes CronJob example:
@@ -200,7 +200,7 @@ spec:
         spec:
           containers:
             - name: oxauth-key-rotation
-              image: gluufederation/certmanager:4.2.0_01
+              image: gluufederation/certmanager:4.2.1_02
               resources:
                 requests:
                   memory: "300Mi"
