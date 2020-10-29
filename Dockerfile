@@ -13,8 +13,8 @@ RUN apk update \
 # =============
 
 # JAR files required to generate OpenID Connect keys
-ENV GLUU_VERSION=4.2.1.Final
-ENV GLUU_BUILD_DATE="2020-09-26 12:32"
+ENV GLUU_VERSION=4.2.2-SNAPSHOT
+ENV GLUU_BUILD_DATE="2020-10-29 16:08"
 
 RUN mkdir -p /app/javalibs \
     && wget -q https://ox.gluu.org/maven/org/gluu/oxauth-client/${GLUU_VERSION}/oxauth-client-${GLUU_VERSION}-jar-with-dependencies.jar -O /app/javalibs/oxauth-client.jar
@@ -33,7 +33,7 @@ RUN mkdir -p /app/javalibs \
 # Python
 # ======
 
-RUN apk add --no-cache py3-cryptography
+RUN apk add --no-cache py3-cryptography py3-multidict py3-yarl
 COPY requirements.txt /app/requirements.txt
 RUN pip3 install --no-cache-dir -U pip \
     && pip3 install --no-cache-dir -r /app/requirements.txt \
@@ -104,8 +104,8 @@ ENV GLUU_WAIT_MAX_TIME=300 \
 LABEL name="Certmanager" \
     maintainer="Gluu Inc. <support@gluu.org>" \
     vendor="Gluu Federation" \
-    version="4.2.1" \
-    release="02" \
+    version="4.2.2" \
+    release="dev" \
     summary="Gluu Certmanager" \
     description="Manage certs and crypto keys for Gluu Server"
 
