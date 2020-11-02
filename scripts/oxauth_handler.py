@@ -1,7 +1,9 @@
+import base64
 import json
 import logging.config
 import os
 import time
+from collections import Counter
 
 from ldap3 import Connection
 from ldap3 import Server
@@ -29,14 +31,14 @@ SIG_KEYS = "RS256 RS384 RS512 ES256 ES384 ES512 PS256 PS384 PS512 RSA1_5 RSA-OAE
 ENC_KEYS = SIG_KEYS
 
 
-def merge_keys(new_keys, old_keys):
-    """Merges new and old keys while omitting expired key.
-    """
-    now = int(time.time() * 1000)
-    for key in old_keys["keys"]:
-        if key.get("exp") > now:
-            new_keys["keys"].append(key)
-    return new_keys
+def key_expired(exp):
+    now = int(time.time()) * 1000  # in milliseconds
+    return now >= exp
+
+
+def keytool_import_key(src_jks_fn, dest_jks_fn, alias, password):
+    cmd = f"keytool -importkeystore -srckeystore {src_jks_fn} -srcstorepass {password} -srcalias {alias} -destkeystore {dest_jks_fn} -deststorepass {password} -destalias {alias}"
+    return exec_cmd(cmd)
 
 
 def encode_jks(manager, jks="/etc/certs/oxauth-keys.jks"):
@@ -46,7 +48,7 @@ def encode_jks(manager, jks="/etc/certs/oxauth-keys.jks"):
     return encoded_jks
 
 
-def generate_openid_keys(passwd, jks_path, dn, exp=365):
+def generate_openid_keys(passwd, jks_path, dn, exp=48):
     if os.path.isfile(jks_path):
         os.unlink(jks_path)
 
@@ -196,6 +198,54 @@ class OxauthHandler(BaseHandler):
         else:
             self.meta_client = DockerMeta()
 
+    def get_merged_keys(self, exp_hours):
+        # get previous JWKS
+        old_jwks = json.loads(
+            base64.b64decode(self.manager.secret.get("oxauth_openid_key_base64"))
+        ).get("keys", [])
+
+        # get previous JKS
+        old_jks_fn = "/etc/certs/oxauth-keys.old.jks"
+        self.manager.secret.to_file("oxauth_jks_base64", old_jks_fn, decode=True, binary_mode=True)
+
+        # generate new JWKS and JKS
+        jks_pass = self.manager.secret.get("oxauth_openid_jks_pass")
+        jks_dn = r"{}".format(self.manager.config.get("default_openid_jks_dn_name"))
+        jks_fn = "/etc/certs/oxauth-keys.jks"
+        jwks_fn = "/etc/certs/oxauth-keys.json"
+        logger.info(f"Generating new {jwks_fn} and {jks_fn}")
+        out, err, retcode = generate_openid_keys(jks_pass, jks_fn, jks_dn, exp=exp_hours)
+
+        if retcode != 0:
+            logger.error(f"Unable to generate keys; reason={err.decode()}")
+            return
+
+        new_jwks = json.loads(out).get("keys", [])
+
+        logger.info("Merging non-expired keys from previous rotation (if any)")
+        for jwk in old_jwks:
+            # filter out expired key
+            if key_expired(jwk["exp"]):
+                continue
+
+            # cannot have more than 2 keys for same algorithm in new JWKS
+            cnt = Counter(j["alg"] for j in new_jwks)
+            if cnt[jwk["alg"]] >= 2:
+                continue
+
+            # add key to new JWKS
+            new_jwks.append(jwk)
+            # import key to new JKS
+            keytool_import_key(old_jks_fn, jks_fn, jwk["kid"], jks_pass)
+
+        # update new JWKS file
+        with open(jwks_fn, "w") as f:
+            data = {"keys": new_jwks}
+            f.write(json.dumps(data, indent=2))
+
+        # finalizing
+        return jwks_fn, jks_fn
+
     def patch(self):
         config = self.backend.get_oxauth_config()
 
@@ -203,13 +253,6 @@ class OxauthHandler(BaseHandler):
             # search failed due to missing entry
             logger.warning("Unable to find oxAuth config")
             return
-
-        jks_pass = self.manager.secret.get("oxauth_openid_jks_pass")
-        jks_fn = self.manager.config.get("oxauth_openid_jks_fn")
-        jwks_fn = "/etc/certs/oxauth-keys.json"
-        jks_dn = r"{}".format(self.manager.config.get("default_openid_jks_dn_name"))
-
-        ox_rev = int(config["oxRevision"])
 
         try:
             conf_dynamic = json.loads(config["oxAuthConfDynamic"])
@@ -222,6 +265,8 @@ class OxauthHandler(BaseHandler):
                            "builtin key rotation feature in oxAuth")
             return
 
+        jks_pass = self.manager.secret.get("oxauth_openid_jks_pass")
+
         conf_dynamic.update({
             "keyRegenerationEnabled": False,  # always set to False
             "keyRegenerationInterval": int(self.rotation_interval),
@@ -229,18 +274,10 @@ class OxauthHandler(BaseHandler):
             "keyStoreSecret": jks_pass,
         })
 
-        # exp_hours = int(self.rotation_interval) + (conf_dynamic["idTokenLifetime"] / 3600)
-        exp_hours = int(self.rotation_interval)
+        exp_hours = int(self.rotation_interval) + int(conf_dynamic["idTokenLifetime"] / 3600)
+        # exp_hours = int(self.rotation_interval)
 
-        logger.info("Generating /etc/certs/oxauth-keys.json and /etc/certs/oxauth-keys.jks")
-        out, err, retcode = generate_openid_keys(jks_pass, jks_fn, jks_dn, exp=exp_hours)
-
-        if retcode != 0 or err:
-            logger.error(f"Unable to generate keys; reason={err.decode()}")
-            return
-
-        with open(jwks_fn, "w") as f:
-            f.write(out.decode())
+        jwks_fn, jks_fn = self.get_merged_keys(exp_hours)
 
         if self.dry_run:
             return
@@ -261,20 +298,22 @@ class OxauthHandler(BaseHandler):
         for container in oxauth_containers:
             name = self.meta_client.get_container_name(container)
 
-            logger.info(f"creating backup of {name}:/etc/certs/oxauth-keys.jks")
-            self.meta_client.exec_cmd(container, "cp /etc/certs/oxauth-keys.jks /etc/certs/oxauth-keys.jks.backup")
-            logger.info(f"creating new {name}:/etc/certs/oxauth-keys.jks")
+            logger.info(f"creating backup of {name}:{jks_fn}")
+            self.meta_client.exec_cmd(container, f"cp {jks_fn} {jks_fn}.backup")
+            logger.info(f"creating new {name}:{jks_fn}")
             self.meta_client.copy_to_container(container, jks_fn)
 
-            logger.info(f"creating backup of {name}:/etc/certs/oxauth-keys.json")
-            self.meta_client.exec_cmd(container, "cp /etc/certs/oxauth-keys.json /etc/certs/oxauth-keys.json.backup")
-            logger.info(f"creating new {name}:/etc/certs/oxauth-keys.json")
+            logger.info(f"creating backup of {name}:{jwks_fn}")
+            self.meta_client.exec_cmd(container, "cp {jwks_fn} {jwks_fn}.backup")
+            logger.info(f"creating new {name}:{jwks_fn}")
             self.meta_client.copy_to_container(container, jwks_fn)
 
         try:
-            keys = json.loads(out)
+            with open(jwks_fn) as f:
+                keys = json.loads(f.read())
 
             logger.info("modifying oxAuth configuration")
+            ox_rev = int(config["oxRevision"])
             ox_modified = self.backend.modify_oxauth_config(
                 config["id"],
                 ox_rev + 1,
@@ -287,10 +326,10 @@ class OxauthHandler(BaseHandler):
                 logger.warning("failed to modify oxAuth configuration")
                 for container in oxauth_containers:
                     name = self.meta_client.get_container_name(container)
-                    logger.info(f"restoring backup of {name}:/etc/certs/oxauth-keys.jks")
-                    self.meta_client.exec_cmd(container, "cp /etc/certs/oxauth-keys.jks.backup /etc/certs/oxauth-keys.jks")
-                    logger.info(f"restoring backup of {name}:/etc/certs/oxauth-keys.json")
-                    self.meta_client.exec_cmd(container, "cp /etc/certs/oxauth-keys.json.backup /etc/certs/oxauth-keys.json")
+                    logger.info(f"restoring backup of {name}:{jks_fn}")
+                    self.meta_client.exec_cmd(container, "cp {jks_fn}.backup {jks_fn}")
+                    logger.info(f"restoring backup of {name}:{jwks_fn}")
+                    self.meta_client.exec_cmd(container, "cp {jwks_fn}.backup {jwks_fn}")
                 return
 
             self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
