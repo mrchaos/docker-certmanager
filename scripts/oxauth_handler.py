@@ -27,8 +27,8 @@ from settings import LOGGING_CONFIG
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("certmanager")
 
-SIG_KEYS = "RS256 RS384 RS512 ES256 ES384 ES512 PS256 PS384 PS512 RSA1_5 RSA-OAEP"
-ENC_KEYS = SIG_KEYS
+SIG_KEYS = "RS256 RS384 RS512 ES256 ES384 ES512 PS256 PS384 PS512"
+ENC_KEYS = "RSA1_5 RSA-OAEP"
 
 
 def key_expired(exp):
@@ -275,7 +275,6 @@ class OxauthHandler(BaseHandler):
         })
 
         exp_hours = int(self.rotation_interval) + int(conf_dynamic["idTokenLifetime"] / 3600)
-        # exp_hours = int(self.rotation_interval)
 
         jwks_fn, jks_fn = self.get_merged_keys(exp_hours)
 
