@@ -1,9 +1,9 @@
-import base64
 import json
 import logging.config
 import os
 import time
 from collections import Counter
+from collections import deque
 
 from ldap3 import Connection
 from ldap3 import Server
@@ -200,9 +200,8 @@ class OxauthHandler(BaseHandler):
 
     def get_merged_keys(self, exp_hours):
         # get previous JWKS
-        old_jwks = json.loads(
-            base64.b64decode(self.manager.secret.get("oxauth_openid_key_base64"))
-        ).get("keys", [])
+        with open("/etc/certs/oxauth-keys.old.json") as f:
+            old_jwks = json.loads(f.read()).get("keys", [])
 
         # get previous JKS
         old_jks_fn = "/etc/certs/oxauth-keys.old.jks"
@@ -220,9 +219,13 @@ class OxauthHandler(BaseHandler):
             logger.error(f"Unable to generate keys; reason={err.decode()}")
             return
 
-        new_jwks = json.loads(out).get("keys", [])
+        new_jwks = deque(json.loads(out).get("keys", []))
 
         logger.info("Merging non-expired keys from previous rotation (if any)")
+        # make sure keys sorted by newer ``exp`` first, so the older one
+        # won't be added to new JWKS
+        old_jwks = sorted(old_jwks, key=lambda k: k["exp"], reverse=True)
+
         for jwk in old_jwks:
             # filter out expired key
             if key_expired(jwk["exp"]):
@@ -233,14 +236,14 @@ class OxauthHandler(BaseHandler):
             if cnt[jwk["alg"]] >= 2:
                 continue
 
-            # add key to new JWKS
-            new_jwks.append(jwk)
+            new_jwks.appendleft(jwk)
+            # new_jwks.append(jwk)
             # import key to new JKS
             keytool_import_key(old_jks_fn, jks_fn, jwk["kid"], jks_pass)
 
         # update new JWKS file
         with open(jwks_fn, "w") as f:
-            data = {"keys": new_jwks}
+            data = {"keys": list(new_jwks)}
             f.write(json.dumps(data, indent=2))
 
         # finalizing
@@ -273,6 +276,15 @@ class OxauthHandler(BaseHandler):
             "webKeysStorage": "keystore",
             "keyStoreSecret": jks_pass,
         })
+
+        # get old JWKS from persistence
+        try:
+            web_keys = json.loads(config["oxAuthConfWebKeys"])
+        except TypeError:
+            web_keys = config["oxAuthConfWebKeys"]
+
+        with open("/etc/certs/oxauth-keys.old.json", "w") as f:
+            f.write(json.dumps(web_keys, indent=2))
 
         exp_hours = int(self.rotation_interval) + int(conf_dynamic["idTokenLifetime"] / 3600)
 
