@@ -41,6 +41,11 @@ def keytool_import_key(src_jks_fn, dest_jks_fn, alias, password):
     return exec_cmd(cmd)
 
 
+def keytool_delete_key(jks_fn, alias, password):
+    cmd = f"keytool -delete -alias {alias} -keystore {jks_fn} -storepass {password}"
+    return exec_cmd(cmd)
+
+
 def encode_jks(manager, jks="/etc/certs/oxauth-keys.jks"):
     encoded_jks = ""
     with open(jks, "rb") as fd:
@@ -291,6 +296,126 @@ class OxauthHandler(BaseHandler):
         jwks_fn, jks_fn = self.get_merged_keys(exp_hours)
 
         if self.dry_run:
+            return
+
+        oxauth_containers = []
+
+        if self.push_keys:
+            oxauth_containers = self.meta_client.get_containers("APP_NAME=oxauth")
+            if not oxauth_containers:
+                logger.warning(
+                    "Unable to find any oxAuth container; make sure "
+                    "to deploy oxAuth and set APP_NAME=oxauth "
+                    "label on container level"
+                )
+                # exit immediately to avoid persistence/secrets being modified
+                return
+
+        for container in oxauth_containers:
+            name = self.meta_client.get_container_name(container)
+
+            logger.info(f"creating backup of {name}:{jks_fn}")
+            self.meta_client.exec_cmd(container, f"cp {jks_fn} {jks_fn}.backup")
+            logger.info(f"creating new {name}:{jks_fn}")
+            self.meta_client.copy_to_container(container, jks_fn)
+
+            logger.info(f"creating backup of {name}:{jwks_fn}")
+            self.meta_client.exec_cmd(container, "cp {jwks_fn} {jwks_fn}.backup")
+            logger.info(f"creating new {name}:{jwks_fn}")
+            self.meta_client.copy_to_container(container, jwks_fn)
+
+        try:
+            with open(jwks_fn) as f:
+                keys = json.loads(f.read())
+
+            logger.info("modifying oxAuth configuration")
+            ox_rev = int(config["oxRevision"])
+            ox_modified = self.backend.modify_oxauth_config(
+                config["id"],
+                ox_rev + 1,
+                conf_dynamic,
+                keys,
+            )
+
+            if not ox_modified:
+                # restore jks and jwks
+                logger.warning("failed to modify oxAuth configuration")
+                for container in oxauth_containers:
+                    name = self.meta_client.get_container_name(container)
+                    logger.info(f"restoring backup of {name}:{jks_fn}")
+                    self.meta_client.exec_cmd(container, "cp {jks_fn}.backup {jks_fn}")
+                    logger.info(f"restoring backup of {name}:{jwks_fn}")
+                    self.meta_client.exec_cmd(container, "cp {jwks_fn}.backup {jwks_fn}")
+                return
+
+            self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
+            self.manager.config.set("oxauth_key_rotated_at", int(time.time()))
+            self.manager.secret.set("oxauth_openid_jks_pass", jks_pass)
+            # jwks
+            self.manager.secret.set(
+                "oxauth_openid_key_base64",
+                generate_base64_contents(json.dumps(keys)),
+            )
+        except (TypeError, ValueError,) as exc:
+            logger.warning(f"Unable to get public keys; reason={exc}")
+
+    def prune(self):
+        config = self.backend.get_oxauth_config()
+
+        if not config:
+            # search failed due to missing entry
+            logger.warning("Unable to find oxAuth config")
+            return
+
+        try:
+            conf_dynamic = json.loads(config["oxAuthConfDynamic"])
+        except TypeError:  # not string/buffer
+            conf_dynamic = config["oxAuthConfDynamic"]
+
+        if conf_dynamic["keyRegenerationEnabled"]:
+            logger.warning("keyRegenerationEnabled config was set to true; "
+                           "skipping proccess to avoid conflict with "
+                           "builtin key rotation feature in oxAuth")
+            return
+
+        jks_pass = self.manager.secret.get("oxauth_openid_jks_pass")
+
+        conf_dynamic.update({
+            "keyRegenerationEnabled": False,  # always set to False
+            "webKeysStorage": "keystore",
+            "keyStoreSecret": jks_pass,
+        })
+
+        # get old JWKS from persistence
+        try:
+            web_keys = json.loads(config["oxAuthConfWebKeys"])
+        except TypeError:
+            web_keys = config["oxAuthConfWebKeys"]
+
+        logger.info("Cleaning up expired keys (if any)")
+
+        jks_fn = "/etc/certs/oxauth-keys.jks"
+        self.manager.secret.to_file("oxauth_jks_base64", jks_fn, decode=True, binary_mode=True)
+
+        should_update = False
+
+        keys = []
+        for jwk in web_keys.get("keys", []):
+            if key_expired(jwk["exp"]):
+                keytool_delete_key(jks_fn, jwk["kid"], jks_pass)
+                should_update = True
+                continue
+            keys.append(jwk)
+
+        web_keys["keys"] = keys
+        jwks_fn = "/etc/certs/oxauth-keys.json"
+        with open(jwks_fn, "w") as f:
+            f.write(json.dumps(web_keys, indent=2))
+
+        if self.dry_run:
+            return
+
+        if not should_update:
             return
 
         oxauth_containers = []

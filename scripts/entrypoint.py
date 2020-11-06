@@ -18,7 +18,7 @@ logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("certmanager")
 
 #: Map between service name and its handler class
-SERVICE_MAP = {
+PATCH_SERVICE_MAP = {
     "web": WebHandler,
     "oxshibboleth": OxshibbolethHandler,
     "oxauth": OxauthHandler,
@@ -27,6 +27,11 @@ SERVICE_MAP = {
     "passport": PassportHandler,
     "scim": ScimHandler,
 }
+
+PRUNE_SERVICE_MAP = {
+    "oxauth": OxauthHandler,
+}
+
 
 # ============
 # CLI commands
@@ -41,14 +46,8 @@ def cli():
 
 
 @cli.command()
-@click.argument(
-    "service", type=click.Choice(SERVICE_MAP.keys()),
-)
-@click.option(
-    "--dry-run",
-    help="Generate save certs and/or crypto keys only without saving it to external backends.",
-    is_flag=True,
-)
+@click.argument("service", type=click.Choice(PATCH_SERVICE_MAP.keys()))
+@click.option("--dry-run", help="Enable dryrun mode.", is_flag=True)
 @click.option(
     "--opts",
     help="Options for targeted service (can be set multiple times).",
@@ -74,8 +73,40 @@ def patch(service, dry_run, opts):
             k = opt
             v = ""
 
-    callback_cls = SERVICE_MAP[service]
+    callback_cls = PATCH_SERVICE_MAP[service]
     callback_cls(manager, dry_run, **_opts).patch()
+
+
+@cli.command()
+@click.argument("service", type=click.Choice(PRUNE_SERVICE_MAP.keys()))
+@click.option("--dry-run", help="Enable dryrun mode.", is_flag=True)
+@click.option(
+    "--opts",
+    help="Options for targeted service (can be set multiple times).",
+    multiple=True,
+    metavar="KEY:VALUE",
+)
+def prune(service, dry_run, opts):
+    """Cleanup expired crypto keys for the targeted service.
+    """
+    manager = get_manager()
+
+    if dry_run:
+        logger.warning("Dry-run mode is enabled!")
+
+    logger.info(f"Processing updates for service {service}")
+
+    _opts = {}
+    for opt in opts:
+        try:
+            k, v = opt.split(":", 1)
+            _opts[k] = v
+        except ValueError:
+            k = opt
+            v = ""
+
+    callback_cls = PATCH_SERVICE_MAP[service]
+    callback_cls(manager, dry_run, **_opts).prune()
 
 
 if __name__ == "__main__":
