@@ -320,7 +320,7 @@ class OxauthHandler(BaseHandler):
             self.meta_client.copy_to_container(container, jks_fn)
 
             logger.info(f"creating backup of {name}:{jwks_fn}")
-            self.meta_client.exec_cmd(container, "cp {jwks_fn} {jwks_fn}.backup")
+            self.meta_client.exec_cmd(container, f"cp {jwks_fn} {jwks_fn}.backup")
             logger.info(f"creating new {name}:{jwks_fn}")
             self.meta_client.copy_to_container(container, jwks_fn)
 
@@ -343,9 +343,9 @@ class OxauthHandler(BaseHandler):
                 for container in oxauth_containers:
                     name = self.meta_client.get_container_name(container)
                     logger.info(f"restoring backup of {name}:{jks_fn}")
-                    self.meta_client.exec_cmd(container, "cp {jks_fn}.backup {jks_fn}")
+                    self.meta_client.exec_cmd(container, f"cp {jks_fn}.backup {jks_fn}")
                     logger.info(f"restoring backup of {name}:{jwks_fn}")
-                    self.meta_client.exec_cmd(container, "cp {jwks_fn}.backup {jwks_fn}")
+                    self.meta_client.exec_cmd(container, f"cp {jwks_fn}.backup {jwks_fn}")
                 return
 
             self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
@@ -440,7 +440,7 @@ class OxauthHandler(BaseHandler):
             self.meta_client.copy_to_container(container, jks_fn)
 
             logger.info(f"creating backup of {name}:{jwks_fn}")
-            self.meta_client.exec_cmd(container, "cp {jwks_fn} {jwks_fn}.backup")
+            self.meta_client.exec_cmd(container, f"cp {jwks_fn} {jwks_fn}.backup")
             logger.info(f"creating new {name}:{jwks_fn}")
             self.meta_client.copy_to_container(container, jwks_fn)
 
@@ -463,9 +463,9 @@ class OxauthHandler(BaseHandler):
                 for container in oxauth_containers:
                     name = self.meta_client.get_container_name(container)
                     logger.info(f"restoring backup of {name}:{jks_fn}")
-                    self.meta_client.exec_cmd(container, "cp {jks_fn}.backup {jks_fn}")
+                    self.meta_client.exec_cmd(container, f"cp {jks_fn}.backup {jks_fn}")
                     logger.info(f"restoring backup of {name}:{jwks_fn}")
-                    self.meta_client.exec_cmd(container, "cp {jwks_fn}.backup {jwks_fn}")
+                    self.meta_client.exec_cmd(container, f"cp {jwks_fn}.backup {jwks_fn}")
                 return
 
             self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
