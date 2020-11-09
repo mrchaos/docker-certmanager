@@ -105,7 +105,7 @@ def prune(service, dry_run, opts):
             k = opt
             v = ""
 
-    callback_cls = PATCH_SERVICE_MAP[service]
+    callback_cls = PRUNE_SERVICE_MAP[service]
     callback_cls(manager, dry_run, **_opts).prune()
 
 
