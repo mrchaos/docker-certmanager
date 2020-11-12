@@ -1,6 +1,7 @@
 import json
 import logging.config
 import os
+import sys
 import time
 from collections import Counter
 from collections import deque
@@ -29,6 +30,7 @@ logger = logging.getLogger("certmanager")
 
 SIG_KEYS = "RS256 RS384 RS512 ES256 ES384 ES512 PS256 PS384 PS512"
 ENC_KEYS = "RSA1_5 RSA-OAEP"
+KEY_STRATEGIES = ("OLDER", "NEWER", "FIRST")
 
 
 def key_expired(exp):
@@ -196,6 +198,8 @@ class OxauthHandler(BaseHandler):
         self.backend = backend_cls(host, user, password)
         self.rotation_interval = opts.get("interval", 48)
         self.push_keys = as_boolean(opts.get("push-to-container", True))
+        self.key_strategy = opts.get("key-strategy", "OLDER")
+        self.privkey_push_delay = opts.get("privkey-push-delay", 0)
 
         metadata = os.environ.get("GLUU_CONTAINER_METADATA", "docker")
         if metadata == "kubernetes":
@@ -255,6 +259,22 @@ class OxauthHandler(BaseHandler):
         return jwks_fn, jks_fn
 
     def patch(self):
+        if self.key_strategy not in KEY_STRATEGIES:
+            strategies = ", ".join(KEY_STRATEGIES)
+            logger.error(f"Key strategy must be one of {strategies}")
+            sys.exit(1)
+
+        push_delay_invalid = False
+        try:
+            if int(self.privkey_push_delay) < 0:
+                push_delay_invalid = True
+        except ValueError:
+            push_delay_invalid = True
+
+        if push_delay_invalid:
+            logger.error("Invalid integer value for private key push delay")
+            sys.exit(1)
+
         config = self.backend.get_oxauth_config()
 
         if not config:
@@ -280,6 +300,7 @@ class OxauthHandler(BaseHandler):
             "keyRegenerationInterval": int(self.rotation_interval),
             "webKeysStorage": "keystore",
             "keyStoreSecret": jks_pass,
+            "keySelectionStrategy": self.key_strategy,
         })
 
         # get old JWKS from persistence
@@ -314,15 +335,19 @@ class OxauthHandler(BaseHandler):
         for container in oxauth_containers:
             name = self.meta_client.get_container_name(container)
 
-            logger.info(f"creating backup of {name}:{jks_fn}")
-            self.meta_client.exec_cmd(container, f"cp {jks_fn} {jks_fn}.backup")
-            logger.info(f"creating new {name}:{jks_fn}")
-            self.meta_client.copy_to_container(container, jks_fn)
-
             logger.info(f"creating backup of {name}:{jwks_fn}")
             self.meta_client.exec_cmd(container, f"cp {jwks_fn} {jwks_fn}.backup")
             logger.info(f"creating new {name}:{jwks_fn}")
             self.meta_client.copy_to_container(container, jwks_fn)
+
+            if int(self.privkey_push_delay) > 0:
+                # delayed jks push
+                continue
+
+            logger.info(f"creating backup of {name}:{jks_fn}")
+            self.meta_client.exec_cmd(container, f"cp {jks_fn} {jks_fn}.backup")
+            logger.info(f"creating new {name}:{jks_fn}")
+            self.meta_client.copy_to_container(container, jks_fn)
 
         try:
             with open(jwks_fn) as f:
@@ -341,14 +366,21 @@ class OxauthHandler(BaseHandler):
                 # restore jks and jwks
                 logger.warning("failed to modify oxAuth configuration")
                 for container in oxauth_containers:
+                    logger.info(f"restoring backup of {name}:{jwks_fn}")
+                    self.meta_client.exec_cmd(container, f"cp {jwks_fn}.backup {jwks_fn}")
+
+                    if int(self.privkey_push_delay) > 0:
+                        # delayed jks revert
+                        continue
+
                     name = self.meta_client.get_container_name(container)
                     logger.info(f"restoring backup of {name}:{jks_fn}")
                     self.meta_client.exec_cmd(container, f"cp {jks_fn}.backup {jks_fn}")
-                    logger.info(f"restoring backup of {name}:{jwks_fn}")
-                    self.meta_client.exec_cmd(container, f"cp {jwks_fn}.backup {jwks_fn}")
                 return
 
-            self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
+            if int(self.privkey_push_delay) == 0:
+                self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
+
             self.manager.config.set("oxauth_key_rotated_at", int(time.time()))
             self.manager.secret.set("oxauth_openid_jks_pass", jks_pass)
             # jwks
@@ -356,6 +388,15 @@ class OxauthHandler(BaseHandler):
                 "oxauth_openid_key_base64",
                 generate_base64_contents(json.dumps(keys)),
             )
+
+            # publish delayed jks
+            if int(self.privkey_push_delay) > 0:
+                logger.info(f"Waiting for private key push delay ({int(self.privkey_push_delay)} seconds) ...")
+                time.sleep(int(self.privkey_push_delay))
+                for container in oxauth_containers:
+                    logger.info(f"creating new {name}:{jks_fn}")
+                    self.meta_client.copy_to_container(container, jks_fn)
+                self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
         except (TypeError, ValueError,) as exc:
             logger.warning(f"Unable to get public keys; reason={exc}")
 
