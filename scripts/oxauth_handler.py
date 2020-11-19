@@ -200,6 +200,7 @@ class OxauthHandler(BaseHandler):
         self.push_keys = as_boolean(opts.get("push-to-container", True))
         self.key_strategy = opts.get("key-strategy", "OLDER")
         self.privkey_push_delay = opts.get("privkey-push-delay", 0)
+        self.privkey_push_strategy = opts.get("privkey-push-strategy", "OLDER")
 
         metadata = os.environ.get("GLUU_CONTAINER_METADATA", "docker")
         if metadata == "kubernetes":
@@ -259,9 +260,14 @@ class OxauthHandler(BaseHandler):
         return jwks_fn, jks_fn
 
     def patch(self):
+        strategies = ", ".join(KEY_STRATEGIES)
+
         if self.key_strategy not in KEY_STRATEGIES:
-            strategies = ", ".join(KEY_STRATEGIES)
             logger.error(f"Key strategy must be one of {strategies}")
+            sys.exit(1)
+
+        if self.privkey_push_strategy not in KEY_STRATEGIES:
+            logger.error(f"Private key push strategy must be one of {strategies}")
             sys.exit(1)
 
         push_delay_invalid = False
@@ -354,10 +360,11 @@ class OxauthHandler(BaseHandler):
                 keys = json.loads(f.read())
 
             logger.info("modifying oxAuth configuration")
-            ox_rev = int(config["oxRevision"])
+            logger.info(f"using keySelectionStrategy {self.key_strategy}")
+            ox_rev = int(config["oxRevision"]) + 1
             ox_modified = self.backend.modify_oxauth_config(
                 config["id"],
-                ox_rev + 1,
+                ox_rev,
                 conf_dynamic,
                 keys,
             )
@@ -397,6 +404,22 @@ class OxauthHandler(BaseHandler):
                     logger.info(f"creating new {name}:{jks_fn}")
                     self.meta_client.copy_to_container(container, jks_fn)
                 self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
+
+                # key selection is changed
+                if self.privkey_push_strategy != self.key_strategy:
+                    ox_rev = ox_rev + 1
+                    conf_dynamic.update({
+                        "keySelectionStrategy": self.privkey_push_strategy,
+                    })
+
+                    logger.info(f"using keySelectionStrategy {self.privkey_push_strategy}")
+
+                    self.backend.modify_oxauth_config(
+                        config["id"],
+                        ox_rev,
+                        conf_dynamic,
+                        keys,
+                    )
         except (TypeError, ValueError,) as exc:
             logger.warning(f"Unable to get public keys; reason={exc}")
 
