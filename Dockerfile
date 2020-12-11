@@ -89,6 +89,21 @@ ENV GLUU_SECRET_ADAPTER=vault \
     GLUU_SECRET_KUBERNETES_SECRET=gluu \
     GLUU_SECRET_KUBERNETES_USE_KUBE_CONFIG=false
 
+# ===============
+# Persistence ENV
+# ===============
+
+ENV GLUU_PERSISTENCE_TYPE=couchbase \
+    GLUU_PERSISTENCE_LDAP_MAPPING=default \
+    GLUU_COUCHBASE_URL=localhost \
+    GLUU_COUCHBASE_USER=admin \
+    GLUU_COUCHBASE_CERT_FILE=/etc/certs/couchbase.crt \
+    GLUU_COUCHBASE_PASSWORD_FILE=/etc/gluu/conf/couchbase_password \
+    GLUU_COUCHBASE_SUPERUSER="" \
+    GLUU_COUCHBASE_SUPERUSER_PASSWORD_FILE=/etc/gluu/conf/couchbase_superuser_password \
+    GLUU_COUCHBASE_BUCKET_PREFIX=gluu \
+    GLUU_LDAP_URL=localhost:1636
+
 # ===========
 # Generic ENV
 # ===========

@@ -132,9 +132,10 @@ class CouchbasePersistence(BasePersistence):
         self.backend = CouchbaseClient(host, user, password)
 
     def get_oxauth_config(self):
+        bucket_prefix = os.environ.get("GLUU_COUCHBASE_BUCKET_PREFIX", "gluu")
         req = self.backend.exec_query(
             "SELECT oxRevision, oxAuthConfDynamic, oxAuthConfWebKeys "
-            "FROM `gluu` "
+            f"FROM `{bucket_prefix}` "
             "USE KEYS 'configuration_oxauth'",
         )
         if not req.ok:
@@ -151,9 +152,10 @@ class CouchbasePersistence(BasePersistence):
     def modify_oxauth_config(self, id_, ox_rev, conf_dynamic, conf_webkeys):
         conf_dynamic = json.dumps(conf_dynamic)
         conf_webkeys = json.dumps(conf_webkeys)
+        bucket_prefix = os.environ.get("GLUU_COUCHBASE_BUCKET_PREFIX", "gluu")
 
         req = self.backend.exec_query(
-            f"UPDATE `gluu` USE KEYS '{id_}' "
+            f"UPDATE `{bucket_prefix}` USE KEYS '{id_}' "
             f"SET oxRevision={ox_rev}, oxAuthConfDynamic={conf_dynamic}, "
             f"oxAuthConfWebKeys={conf_webkeys} "
             "RETURNING oxRevision"
