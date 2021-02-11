@@ -1,12 +1,14 @@
-FROM adoptopenjdk/openjdk11:jre-11.0.8_10-alpine
+FROM alpine:3.13
 
 # ===============
 # Alpine packages
 # ===============
 
 RUN apk update \
-    && apk add --no-cache openssl py3-pip curl tini \
-    && apk add --no-cache --virtual build-deps wget git gcc musl-dev python3-dev libffi-dev openssl-dev
+    && apk add --no-cache openssl py3-pip curl tini openjdk11-jre-headless \
+    && apk add --no-cache --virtual build-deps wget git gcc musl-dev python3-dev libffi-dev openssl-dev cargo \
+    && mkdir -p /usr/java/latest \
+    && ln -sf /usr/lib/jvm/default-jvm/jre /usr/java/latest/jre
 
 # =============
 # oxAuth client
