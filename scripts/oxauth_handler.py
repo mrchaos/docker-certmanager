@@ -386,9 +386,7 @@ class OxauthHandler(BaseHandler):
                     self.meta_client.exec_cmd(container, f"cp {jks_fn}.backup {jks_fn}")
                 return
 
-            if int(self.privkey_push_delay) == 0:
-                self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
-
+            self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
             self.manager.config.set("oxauth_key_rotated_at", int(time.time()))
             self.manager.secret.set("oxauth_openid_jks_pass", jks_pass)
             # jwks
@@ -404,7 +402,6 @@ class OxauthHandler(BaseHandler):
                 for container in oxauth_containers:
                     logger.info(f"creating new {name}:{jks_fn}")
                     self.meta_client.copy_to_container(container, jks_fn)
-                self.manager.secret.set("oxauth_jks_base64", encode_jks(self.manager))
 
                 # key selection is changed
                 if self.privkey_push_strategy != self.key_strategy:
