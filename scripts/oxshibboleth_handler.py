@@ -33,7 +33,7 @@ class OxshibbolethHandler(BaseHandler):
         passwd = self.manager.secret.get("shibJksPass")
 
         # shibIDP
-        cert_fn, key_fn = self._patch_cert_key("shibIDP", passwd)
+        cert_fn, key_fn = self._patch_cert_key("shibIDP")
         if not self.dry_run:
             if cert_fn:
                 self.manager.secret.from_file(
@@ -71,7 +71,7 @@ class OxshibbolethHandler(BaseHandler):
                 )
 
         # IDP signing
-        cert_fn, key_fn = self._patch_cert_key("idp-signing", passwd)
+        cert_fn, key_fn = self._patch_cert_key("idp-signing")
         if not self.dry_run:
             if cert_fn:
                 self.manager.secret.from_file(
@@ -81,7 +81,7 @@ class OxshibbolethHandler(BaseHandler):
                 self.manager.secret.from_file("idp3SigningKeyText", key_fn)
 
         # IDP encryption
-        cert_fn, key_fn = self._patch_cert_key("idp-encryption", passwd)
+        cert_fn, key_fn = self._patch_cert_key("idp-encryption")
         if not self.dry_run:
             if cert_fn:
                 self.manager.secret.from_file(

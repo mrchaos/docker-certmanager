@@ -10,20 +10,12 @@ logger = logging.getLogger("certmanager")
 
 
 class OxdHandler(BaseHandler):
-    @staticmethod
-    def generate_x509(cert_file, key_file, cert_cn):
-        out, err, code = exec_cmd(
-            "openssl req -x509 -newkey rsa:2048 "
-            f"-keyout {key_file} "
-            f"-out {cert_file} "
-            f"-subj '/CN={cert_cn}' "
-            "-days 365 "
-            "-nodes"
+    def generate_x509(self, suffix, cert_cn):
+        cert_file, key_file = self._patch_cert_key(
+            suffix,
+            extra_dns=[cert_cn],
         )
-        if code != 0:
-            logger.warning(f"Failed to generate cert and key; reason={err.decode()}")
-            return False
-        return True
+        return cert_file, key_file
 
     @staticmethod
     def generate_keystore(cert_file, key_file, keystore_file, keystore_password):
@@ -40,13 +32,12 @@ class OxdHandler(BaseHandler):
         return True
 
     def _patch_connector(self, conn_type):
-        cert_file = f"/etc/certs/oxd_{conn_type}.crt"
-        key_file = f"/etc/certs/oxd_{conn_type}.key"
+        suffix = f"oxd_{conn_type}"
+        cert_file, key_file = f"{suffix}.crt", f"{suffix}.key"
         cert_cn = self.opts.get(f"{conn_type}-cn", "localhost")
 
-        logger.info(f"Generating new {cert_file} and {key_file} file(s)")
-        generated = self.generate_x509(cert_file, key_file, cert_cn)
-        if not self.dry_run and generated:
+        cert_file, key_file = self.generate_x509(suffix, cert_cn)
+        if not self.dry_run:
             self.manager.secret.from_file(
                 f"oxd_{conn_type}_cert", cert_file,
             )

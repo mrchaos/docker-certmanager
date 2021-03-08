@@ -84,7 +84,7 @@ class PassportHandler(BaseHandler):
             self.manager.secret.from_file("passport_rp_client_cert_base64", client_cert_fn, encode=True)
 
     def patch_passport_sp(self):
-        cert_fn, key_fn = self._patch_cert_key("passport-sp", self.manager.secret.get("passportSpJksPass"))
+        cert_fn, key_fn = self._patch_cert_key("passport-sp")
 
         if not self.dry_run:
             self.manager.secret.from_file("passport_sp_cert_base64", cert_fn, encode=True)
