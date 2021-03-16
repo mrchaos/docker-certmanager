@@ -41,7 +41,7 @@ class OxshibbolethHandler(BaseHandler):
                 )
             if key_fn:
                 self.manager.secret.from_file(
-                    "shibIDP_cert", key_fn, encode=True,
+                    "shibIDP_key", key_fn, encode=True,
                 )
 
         keystore_fn = self._patch_keystore(
