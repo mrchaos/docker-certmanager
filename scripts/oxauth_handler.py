@@ -55,14 +55,14 @@ def encode_jks(manager, jks="/etc/certs/oxauth-keys.jks"):
     return encoded_jks
 
 
-def generate_openid_keys(passwd, jks_path, dn, exp=48):
+def generate_openid_keys(passwd, jks_path, dn, exp=48, sig_keys=SIG_KEYS, enc_keys=ENC_KEYS):
     if os.path.isfile(jks_path):
         os.unlink(jks_path)
 
     cmd = (
         "java -Dlog4j.defaultInitOverride=true "
         "-jar /app/javalibs/oxauth-client.jar "
-        f"-enc_keys {ENC_KEYS} -sig_keys {SIG_KEYS} "
+        f"-enc_keys {enc_keys} -sig_keys {sig_keys} "
         f"-dnname '{dn}' -expiration_hours {exp} "
         f"-keystore {jks_path} -keypasswd {passwd}"
     )
@@ -203,12 +203,19 @@ class OxauthHandler(BaseHandler):
         self.key_strategy = opts.get("key-strategy", "OLDER")
         self.privkey_push_delay = opts.get("privkey-push-delay", 0)
         self.privkey_push_strategy = opts.get("privkey-push-strategy", "OLDER")
+        self.sig_keys = resolve_sig_keys(opts.get("sig-keys", SIG_KEYS))
+        self.enc_keys = resolve_enc_keys(opts.get("enc-keys", ENC_KEYS))
 
         metadata = os.environ.get("GLUU_CONTAINER_METADATA", "docker")
         if metadata == "kubernetes":
             self.meta_client = KubernetesMeta()
         else:
             self.meta_client = DockerMeta()
+
+    @property
+    def allowed_key_algs(self):
+        algs = self.sig_keys.split(" ") + self.enc_keys.split(" ")
+        return algs
 
     def get_merged_keys(self, exp_hours):
         # get previous JWKS
@@ -225,7 +232,9 @@ class OxauthHandler(BaseHandler):
         jks_fn = "/etc/certs/oxauth-keys.jks"
         jwks_fn = "/etc/certs/oxauth-keys.json"
         logger.info(f"Generating new {jwks_fn} and {jks_fn}")
-        out, err, retcode = generate_openid_keys(jks_pass, jks_fn, jks_dn, exp=exp_hours)
+        out, err, retcode = generate_openid_keys(
+            jks_pass, jks_fn, jks_dn, exp=exp_hours, sig_keys=self.sig_keys, enc_keys=self.enc_keys,
+        )
 
         if retcode != 0:
             logger.error(f"Unable to generate keys; reason={err.decode()}")
@@ -241,6 +250,10 @@ class OxauthHandler(BaseHandler):
         cnt = Counter(j["alg"] for j in new_jwks)
 
         for jwk in old_jwks:
+            # exclude alg if it's not allowed
+            if jwk["alg"] not in self.allowed_key_algs:
+                continue
+
             # cannot have more than 2 keys for same algorithm in new JWKS
             if cnt[jwk["alg"]] > 1:
                 continue
@@ -308,6 +321,7 @@ class OxauthHandler(BaseHandler):
             "webKeysStorage": "keystore",
             "keyStoreSecret": jks_pass,
             "keySelectionStrategy": self.key_strategy,
+            "keyAlgsAllowedForGeneration": self.allowed_key_algs,
         })
 
         # get old JWKS from persistence
@@ -446,6 +460,7 @@ class OxauthHandler(BaseHandler):
             "keyRegenerationEnabled": False,  # always set to False
             "webKeysStorage": "keystore",
             "keyStoreSecret": jks_pass,
+            "keyAlgsAllowedForGeneration": self.allowed_key_algs,
         })
 
         # get old JWKS from persistence
@@ -470,6 +485,11 @@ class OxauthHandler(BaseHandler):
         cnt = Counter(j["alg"] for j in new_jwks)
 
         for jwk in old_jwks:
+            # exclude alg if it's not allowed
+            if jwk["alg"] not in self.allowed_key_algs:
+                keytool_delete_key(jks_fn, jwk["kid"], jks_pass)
+                continue
+
             # cannot have more than 1 key for same algorithm in new JWKS
             if cnt[jwk["alg"]]:
                 keytool_delete_key(jks_fn, jwk["kid"], jks_pass)
@@ -548,3 +568,51 @@ class OxauthHandler(BaseHandler):
             )
         except (TypeError, ValueError,) as exc:
             logger.warning(f"Unable to get public keys; reason={exc}")
+
+
+def resolve_sig_keys(keys: str) -> str:
+    """
+    Resolves signing keys.
+
+    :param keys: Space-separated signing keys.
+    :returns: Space-separated allowed signing keys.
+    """
+
+    default_sig_keys = SIG_KEYS.split(" ")
+    sig_keys = []
+
+    for k in keys.split(" "):
+        k = k.strip()
+
+        if k not in default_sig_keys:
+            continue
+        sig_keys.append(k)
+
+    if not sig_keys:
+        sig_keys = default_sig_keys
+        logger.warning(f"Signing keys are empty; fallback to default {SIG_KEYS}")
+    return " ".join(sig_keys)
+
+
+def resolve_enc_keys(keys: str) -> str:
+    """
+    Resolves encryption keys.
+
+    :param keys: Space-separated encryption keys.
+    :returns: Space-separated allowed encryption keys.
+    """
+
+    default_enc_keys = ENC_KEYS.split(" ")
+    enc_keys = []
+
+    for k in keys.split(" "):
+        k = k.strip()
+
+        if k not in default_enc_keys:
+            continue
+        enc_keys.append(k)
+
+    if not enc_keys:
+        enc_keys = default_enc_keys
+        logger.warning(f"Encryption keys are empty; fallback to default {ENC_KEYS}")
+    return " ".join(enc_keys)

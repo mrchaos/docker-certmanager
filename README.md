@@ -104,6 +104,8 @@ Supported services:
     - `key-strategy`: key selection strategy (choose one of `OLDER`, `NEWER`, `FIRST`; default to `OLDER`)
     - `privkey-push-delay`: delay time in seconds before pushing `oxauth-keys.jks` to oxAuth containers (default to `0`)
     - `privkey-push-strategy`: key selection strategy after `oxauth-keys.jks` is pushed to oxAuth containers (choose one of `OLDER`, `NEWER`, `FIRST`; default to `OLDER`)
+    - `sig-keys`: space-separated key algorithm for signing (default to `RS256 RS384 RS512 ES256 ES384 ES512 PS256 PS384 PS512`)
+    - `enc-keys`: space-separated key algorithm for encryption (default to `RSA1_5 RSA-OAEP`)
 
 1.  `oxshibboleth`
 
@@ -201,6 +203,8 @@ Supported services:
     Options:
 
     - `push-to-container`: whether to _push_ `oxauth-keys.jks` and `oxauth-keys.json` to oxAuth containers (default to `true`)
+    - `sig-keys`: space-separated key algorithm for signing (default to `RS256 RS384 RS512 ES256 ES384 ES512 PS256 PS384 PS512`)
+    - `enc-keys`: space-separated key algorithm for encryption (default to `RSA1_5 RSA-OAEP`)
 
 ### Examples
 
