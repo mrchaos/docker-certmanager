@@ -103,7 +103,8 @@ ENV GLUU_PERSISTENCE_TYPE=couchbase \
     GLUU_COUCHBASE_SUPERUSER="" \
     GLUU_COUCHBASE_SUPERUSER_PASSWORD_FILE=/etc/gluu/conf/couchbase_superuser_password \
     GLUU_COUCHBASE_BUCKET_PREFIX=gluu \
-    GLUU_LDAP_URL=localhost:1636
+    GLUU_LDAP_URL=localhost:1636 \
+    GLUU_LDAP_USE_SSL=true
 
 # ===========
 # Generic ENV

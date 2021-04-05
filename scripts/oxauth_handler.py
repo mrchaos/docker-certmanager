@@ -6,15 +6,10 @@ import time
 from collections import Counter
 from collections import deque
 
-from ldap3 import Connection
-from ldap3 import Server
-from ldap3 import BASE
-from ldap3 import MODIFY_REPLACE
-
 from pygluu.containerlib.persistence.couchbase import CouchbaseClient
 from pygluu.containerlib.persistence.couchbase import get_couchbase_user
 from pygluu.containerlib.persistence.couchbase import get_couchbase_password
-from pygluu.containerlib.utils import decode_text
+from pygluu.containerlib.persistence.ldap import LdapClient
 from pygluu.containerlib.utils import encode_text
 from pygluu.containerlib.utils import exec_cmd
 from pygluu.containerlib.utils import generate_base64_contents
@@ -78,62 +73,48 @@ class BasePersistence(object):
 
 
 class LdapPersistence(BasePersistence):
-    def __init__(self, host, user, password):
-        ldap_server = Server(host, port=1636, use_ssl=True)
-        self.backend = Connection(ldap_server, user, password)
+    def __init__(self, manager):
+        self.client = LdapClient(manager)
 
     def get_oxauth_config(self):
-        # base DN for oxAuth config
-        oxauth_base = ",".join([
-            "ou=oxauth",
-            "ou=configuration",
-            "o=gluu",
-        ])
+        entry = self.client.get(
+            "ou=oxauth,ou=configuration,o=gluu",
+            attributes=["oxRevision", "oxAuthConfWebKeys", "oxAuthConfDynamic"],
+        )
 
-        with self.backend as conn:
-            conn.search(
-                search_base=oxauth_base,
-                search_filter="(objectClass=*)",
-                search_scope=BASE,
-                attributes=[
-                    "oxRevision",
-                    "oxAuthConfWebKeys",
-                    "oxAuthConfDynamic",
-                ]
-            )
+        if not entry:
+            return {}
 
-            if not conn.entries:
-                return {}
-
-            entry = conn.entries[0]
-
-            config = {
-                "id": entry.entry_dn,
-                "oxRevision": entry["oxRevision"][0],
-                "oxAuthConfWebKeys": entry["oxAuthConfWebKeys"][0],
-                "oxAuthConfDynamic": entry["oxAuthConfDynamic"][0],
-            }
-            return config
+        config = {
+            "id": entry.entry_dn,
+            "oxRevision": entry["oxRevision"][0],
+            "oxAuthConfWebKeys": entry["oxAuthConfWebKeys"][0],
+            "oxAuthConfDynamic": entry["oxAuthConfDynamic"][0],
+        }
+        return config
 
     def modify_oxauth_config(self, id_, ox_rev, conf_dynamic, conf_webkeys):
-        with self.backend as conn:
-            conn.modify(id_, {
-                'oxRevision': [(MODIFY_REPLACE, [str(ox_rev)])],
-                'oxAuthConfWebKeys': [(MODIFY_REPLACE, [json.dumps(conf_webkeys)])],
-                'oxAuthConfDynamic': [(MODIFY_REPLACE, [json.dumps(conf_dynamic)])],
-            })
-
-            result = conn.result["description"]
-            return result == "success"
+        modified, _ = self.client.modify(
+            id_,
+            {
+                "oxRevision": [(self.client.MODIFY_REPLACE, [str(ox_rev)])],
+                "oxAuthConfWebKeys": [(self.client.MODIFY_REPLACE, [json.dumps(conf_webkeys)])],
+                "oxAuthConfDynamic": [(self.client.MODIFY_REPLACE, [json.dumps(conf_dynamic)])],
+            }
+        )
+        return modified
 
 
 class CouchbasePersistence(BasePersistence):
-    def __init__(self, host, user, password):
-        self.backend = CouchbaseClient(host, user, password)
+    def __init__(self, manager):
+        host = os.environ.get("GLUU_COUCHBASE_URL", "localhost")
+        user = get_couchbase_user(manager)
+        password = get_couchbase_password(manager)
+        self.client = CouchbaseClient(host, user, password)
 
     def get_oxauth_config(self):
         bucket_prefix = os.environ.get("GLUU_COUCHBASE_BUCKET_PREFIX", "gluu")
-        req = self.backend.exec_query(
+        req = self.client.exec_query(
             "SELECT oxRevision, oxAuthConfDynamic, oxAuthConfWebKeys "
             f"FROM `{bucket_prefix}` "
             "USE KEYS 'configuration_oxauth'",
@@ -154,7 +135,7 @@ class CouchbasePersistence(BasePersistence):
         conf_webkeys = json.dumps(conf_webkeys)
         bucket_prefix = os.environ.get("GLUU_COUCHBASE_BUCKET_PREFIX", "gluu")
 
-        req = self.backend.exec_query(
+        req = self.client.exec_query(
             f"UPDATE `{bucket_prefix}` USE KEYS '{id_}' "
             f"SET oxRevision={ox_rev}, oxAuthConfDynamic={conf_dynamic}, "
             f"oxAuthConfWebKeys={conf_webkeys} "
@@ -184,20 +165,10 @@ class OxauthHandler(BaseHandler):
 
         # resolve backend
         if backend_type == "ldap":
-            host = os.environ.get("GLUU_LDAP_URL", "localhost:1636")
-            user = manager.config.get("ldap_binddn")
-            password = decode_text(
-                manager.secret.get("encoded_ox_ldap_pw"),
-                manager.secret.get("encoded_salt"),
-            )
-            backend_cls = LdapPersistence
+            self.backend = LdapPersistence(manager)
         else:
-            host = os.environ.get("GLUU_COUCHBASE_URL", "localhost")
-            user = get_couchbase_user(manager)
-            password = get_couchbase_password(manager)
-            backend_cls = CouchbasePersistence
+            self.backend = CouchbasePersistence(manager)
 
-        self.backend = backend_cls(host, user, password)
         self.rotation_interval = opts.get("interval", 48)
         self.push_keys = as_boolean(opts.get("push-to-container", True))
         self.key_strategy = opts.get("key-strategy", "OLDER")
