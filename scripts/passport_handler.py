@@ -1,7 +1,13 @@
 import base64
 import json
 import logging.config
+import os
 import sys
+
+from pygluu.containerlib.persistence.couchbase import CouchbaseClient
+from pygluu.containerlib.persistence.couchbase import get_couchbase_user
+from pygluu.containerlib.persistence.couchbase import get_couchbase_password
+from pygluu.containerlib.persistence.ldap import LdapClient
 
 from base_handler import BaseHandler
 from settings import LOGGING_CONFIG
@@ -12,7 +18,142 @@ logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("certmanager")
 
 
+class BasePersistence:
+    def modify_passport_rs_client(self, jwks):
+        raise NotImplementedError
+
+    def modify_passport_rp_client(self, jwks):
+        raise NotImplementedError
+
+    def modify_passport_rs_config(self, cert_alias):
+        raise NotImplementedError
+
+
+class LdapPersistence(BasePersistence):
+    def __init__(self, manager):
+        self.client = LdapClient(manager)
+        self.manager = manager
+
+    def _modify_passport_client(self, client_id, jwks: str) -> bool:
+        id_ = f"inum={client_id},ou=clients,o=gluu"
+        modified, _ = self.client.modify(
+            id_,
+            {
+                "oxAuthJwks": [(self.client.MODIFY_REPLACE, [jwks])],
+            },
+        )
+        return modified
+
+    def modify_passport_rs_client(self, jwks: str) -> bool:
+        client_id = self.manager.config.get("passport_rs_client_id")
+        return self._modify_passport_client(client_id, jwks)
+
+    def modify_passport_rp_client(self, jwks: str) -> bool:
+        client_id = self.manager.config.get("passport_rp_client_id")
+        return self._modify_passport_client(client_id, jwks)
+
+    def modify_passport_rs_config(self, cert_alias: str) -> bool:
+        entry = self.client.get(
+            "ou=oxtrust,ou=configuration,o=gluu",
+            attributes=["oxRevision", "oxTrustConfApplication"])
+
+        if not entry:
+            return False
+
+        conf = json.loads(entry["oxTrustConfApplication"][0])
+        conf["passportUmaClientKeyId"] = cert_alias
+        rev = int(entry["oxRevision"][0]) + 1
+
+        modified, _ = self.client.modify(
+            entry.entry_dn,
+            {
+                "oxRevision": [(self.client.MODIFY_REPLACE, [str(rev)])],
+                "oxTrustConfApplication": [(self.client.MODIFY_REPLACE, [json.dumps(conf)])],
+            },
+        )
+        return modified
+
+
+class CouchbasePersistence(BasePersistence):
+    def __init__(self, manager):
+        host = os.environ.get("GLUU_COUCHBASE_URL", "localhost")
+        user = get_couchbase_user(manager)
+        password = get_couchbase_password(manager)
+        self.client = CouchbaseClient(host, user, password)
+        self.manager = manager
+
+    def _modify_passport_client(self, client_id, jwks: str) -> bool:
+        bucket_prefix = os.environ.get("GLUU_COUCHBASE_BUCKET_PREFIX", "gluu")
+
+        id_ = f"clients_{client_id}"
+        req = self.client.exec_query(
+            f"UPDATE `{bucket_prefix}` USE KEYS '{id_}' "
+            f"SET oxAuthJwks={jwks}"
+        )
+        return req.ok
+
+    def modify_passport_rs_client(self, jwks: str) -> bool:
+        client_id = self.manager.config.get("passport_rs_client_id")
+        return self._modify_passport_client(client_id, jwks)
+
+    def modify_passport_rp_client(self, jwks: str) -> bool:
+        client_id = self.manager.config.get("passport_rp_client_id")
+        return self._modify_passport_client(client_id, jwks)
+
+    def modify_passport_rs_config(self, cert_alias):
+        bucket_prefix = os.environ.get("GLUU_COUCHBASE_BUCKET_PREFIX", "gluu")
+
+        id_ = "configuration_oxtrust"
+        req = self.client.exec_query(
+            "SELECT oxRevision, oxTrustConfApplication "
+            f"FROM `{bucket_prefix}` "
+            f"USE KEYS '{id_}'"
+        )
+
+        if not req.ok:
+            return False
+
+        entry = req.json()["results"][0]
+        if not entry:
+            return False
+
+        try:
+            conf = json.loads(entry["oxTrustConfApplication"])
+        except TypeError:
+            conf = entry["oxTrustConfApplication"]
+
+        conf["passportUmaClientKeyId"] = cert_alias
+        rev = int(entry["oxRevision"]) + 1
+
+        req = self.client.exec_query(
+            f"UPDATE `{bucket_prefix}` USE KEYS '{id_}' "
+            f"SET oxRevision={rev}, oxTrustConfApplication={json.dumps(conf)}"
+        )
+        return req.ok
+
+
 class PassportHandler(BaseHandler):
+    def __init__(self, manager, dry_run, **opts):
+        super().__init__(manager, dry_run, **opts)
+
+        persistence_type = os.environ.get("GLUU_PERSISTENCE_TYPE", "ldap")
+        ldap_mapping = os.environ.get("GLUU_PERSISTENCE_LDAP_MAPPING", "default")
+
+        if persistence_type in ("ldap", "couchbase"):
+            backend_type = persistence_type
+        else:
+            # persistence_type is hybrid
+            if ldap_mapping == "default":
+                backend_type = "ldap"
+            else:
+                backend_type = "couchbase"
+
+        # resolve backend
+        if backend_type == "ldap":
+            self.backend = LdapPersistence(manager)
+        else:
+            self.backend = CouchbasePersistence(manager)
+
     def patch_passport_rs(self):
         jks_fn = self.manager.config.get("passport_rs_client_jks_fn")
         jwks_fn = self.manager.config.get("passport_rs_client_jwks_fn")
@@ -37,11 +178,15 @@ class PassportHandler(BaseHandler):
                 break
 
         if not self.dry_run:
-            self.manager.secret.set("passport_rs_client_base64_jwks", base64.b64encode(out))
-            self.manager.secret.from_file(
-                "passport_rs_jks_base64", jks_fn, encode=True, binary_mode=True,
-            )
-            self.manager.config.set("passport_rs_client_cert_alias", cert_alias)
+            client_modified = self.backend.modify_passport_rs_client(out.decode())
+            config_modified = self.backend.modify_passport_rs_config(cert_alias)
+
+            if client_modified and config_modified:
+                self.manager.secret.set("passport_rs_client_base64_jwks", base64.b64encode(out))
+                self.manager.secret.from_file(
+                    "passport_rs_jks_base64", jks_fn, encode=True, binary_mode=True,
+                )
+                self.manager.config.set("passport_rs_client_cert_alias", cert_alias)
 
     def patch_passport_rp(self):
         jks_pass = self.manager.secret.get("passport_rp_client_jks_pass")
@@ -76,12 +221,15 @@ class PassportHandler(BaseHandler):
             sys.exit(1)
 
         if not self.dry_run:
-            self.manager.secret.set("passport_rp_client_base64_jwks", base64.b64encode(out))
-            self.manager.secret.from_file(
-                "passport_rp_jks_base64", jks_fn, encode=True, binary_mode=True,
-            )
-            self.manager.config.set("passport_rp_client_cert_alias", cert_alias)
-            self.manager.secret.from_file("passport_rp_client_cert_base64", client_cert_fn, encode=True)
+            client_modified = self.backend.modify_passport_rp_client(out.decode())
+
+            if client_modified:
+                self.manager.secret.set("passport_rp_client_base64_jwks", base64.b64encode(out))
+                self.manager.secret.from_file(
+                    "passport_rp_jks_base64", jks_fn, encode=True, binary_mode=True,
+                )
+                self.manager.config.set("passport_rp_client_cert_alias", cert_alias)
+                self.manager.secret.from_file("passport_rp_client_cert_base64", client_cert_fn, encode=True)
 
     def patch_passport_sp(self):
         cert_fn, key_fn = self._patch_cert_key("passport-sp")
@@ -91,6 +239,6 @@ class PassportHandler(BaseHandler):
             self.manager.secret.from_file("passport_sp_key_base64", key_fn, encode=True)
 
     def patch(self):
-        self.patch_passport_rs()
         self.patch_passport_rp()
+        self.patch_passport_rs()
         self.patch_passport_sp()
