@@ -24,6 +24,7 @@ class PassportHandler(BaseHandler):
             jks_fn,
             jwks_fn,
             self.manager.config.get("default_openid_jks_dn_name"),
+            exp=365 * 24,
         )
         if retcode != 0:
             logger.error(f"Unable to generate Passport RS keys; reason={err.decode()}")
@@ -56,6 +57,7 @@ class PassportHandler(BaseHandler):
             jks_fn,
             jwks_fn,
             self.manager.config.get("default_openid_jks_dn_name"),
+            exp=365 * 24,
         )
         if code != 0:
             logger.error(f"Unable to generate Passport RP keys; reason={err.decode()}")
