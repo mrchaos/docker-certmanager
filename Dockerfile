@@ -121,7 +121,7 @@ LABEL name="Certmanager" \
     maintainer="Gluu Inc. <support@gluu.org>" \
     vendor="Gluu Federation" \
     version="4.2.3" \
-    release="05" \
+    release="06" \
     summary="Gluu Certmanager" \
     description="Manage certs and crypto keys for Gluu Server"
 
