@@ -35,7 +35,14 @@ class LdapPersistence(BasePersistence):
         self.manager = manager
 
     def _modify_passport_client(self, client_id, jwks: str) -> bool:
+        # v4.x format
         id_ = f"inum={client_id},ou=clients,o=gluu"
+
+        # v3.x format (backward-compat)
+        inum_org = self.manager.config.get("inumOrg")
+        if inum_org:
+            id_ = f"inum={client_id},ou=clients,o={inum_org},o=gluu"
+
         modified, _ = self.client.modify(
             id_,
             {
@@ -53,8 +60,16 @@ class LdapPersistence(BasePersistence):
         return self._modify_passport_client(client_id, jwks)
 
     def modify_passport_rs_config(self, cert_alias: str) -> bool:
+        # v4.x format
+        id_ = "ou=oxtrust,ou=configuration,o=gluu"
+
+        # v3.x format (backward-compat)
+        inum_appliance = self.manager.config.get("inumAppliance")
+        if inum_appliance:
+            id_ = f"ou=oxtrust,ou=configuration,inum={inum_appliance},ou=appliances,o=gluu"
+
         entry = self.client.get(
-            "ou=oxtrust,ou=configuration,o=gluu",
+            id_,
             attributes=["oxRevision", "oxTrustConfApplication"])
 
         if not entry:
