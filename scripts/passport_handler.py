@@ -151,7 +151,7 @@ class CouchbasePersistence(BasePersistence):
 
 class SQLPersistence(BasePersistence):
     def __init__(self, manager):
-        self.client = SQLClient(manager)
+        self.client = SQLClient()
         self.manager = manager
 
     def _modify_passport_client(self, client_id, jwks: str) -> bool:
@@ -191,7 +191,7 @@ class SQLPersistence(BasePersistence):
 
 class SpannerPersistence(BasePersistence):
     def __init__(self, manager):
-        self.client = SpannerClient(manager)
+        self.client = SpannerClient()
         self.manager = manager
 
 

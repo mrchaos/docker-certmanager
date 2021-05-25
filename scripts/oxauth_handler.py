@@ -151,7 +151,7 @@ class CouchbasePersistence(BasePersistence):
 
 class SQLPersistence(BasePersistence):
     def __init__(self, manager):
-        self.client = SQLClient(manager)
+        self.client = SQLClient()
 
     def get_oxauth_config(self):
         config = self.client.get(
@@ -181,7 +181,7 @@ class SQLPersistence(BasePersistence):
 
 class SpannerPersistence(SQLPersistence):
     def __init__(self, manager):
-        self.client = SpannerClient(manager)
+        self.client = SpannerClient()
 
 
 _backend_classes = {
