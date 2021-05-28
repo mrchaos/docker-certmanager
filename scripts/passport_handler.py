@@ -155,7 +155,7 @@ class SQLPersistence(BasePersistence):
         self.manager = manager
 
     def _modify_passport_client(self, client_id, jwks: str) -> bool:
-        return self.client("oxAuthClient", client_id, {"oxAuthJwks": jwks})
+        return self.client.update("oxAuthClient", client_id, {"oxAuthJwks": jwks})
 
     def modify_passport_rs_client(self, jwks: str) -> bool:
         client_id = self.manager.config.get("passport_rs_client_id")
@@ -189,7 +189,7 @@ class SQLPersistence(BasePersistence):
         return modified
 
 
-class SpannerPersistence(BasePersistence):
+class SpannerPersistence(SQLPersistence):
     def __init__(self, manager):
         self.client = SpannerClient()
         self.manager = manager
