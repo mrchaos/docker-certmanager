@@ -10,6 +10,8 @@ from pygluu.containerlib.persistence.couchbase import CouchbaseClient
 from pygluu.containerlib.persistence.couchbase import get_couchbase_user
 from pygluu.containerlib.persistence.couchbase import get_couchbase_password
 from pygluu.containerlib.persistence.ldap import LdapClient
+from pygluu.containerlib.persistence.sql import SQLClient
+from pygluu.containerlib.persistence.spanner import SpannerClient
 from pygluu.containerlib.utils import encode_text
 from pygluu.containerlib.utils import exec_cmd
 from pygluu.containerlib.utils import generate_base64_contents
@@ -147,6 +149,49 @@ class CouchbasePersistence(BasePersistence):
         return True
 
 
+class SQLPersistence(BasePersistence):
+    def __init__(self, manager):
+        self.client = SQLClient()
+
+    def get_oxauth_config(self):
+        config = self.client.get(
+            "oxAuthConfiguration",
+            "oxauth",
+            ["oxRevision", "oxAuthConfWebKeys", "oxAuthConfDynamic"],
+        )
+
+        if not config:
+            return {}
+
+        config["id"] = "oxauth"
+        return config
+
+    def modify_oxauth_config(self, id_, ox_rev, conf_dynamic, conf_webkeys):
+        updated = self.client.update(
+            "oxAuthConfiguration",
+            "oxauth",
+            {
+                "oxRevision": ox_rev,
+                "oxAuthConfWebKeys": json.dumps(conf_webkeys),
+                "oxAuthConfDynamic": json.dumps(conf_dynamic),
+            }
+        )
+        return updated
+
+
+class SpannerPersistence(SQLPersistence):
+    def __init__(self, manager):
+        self.client = SpannerClient()
+
+
+_backend_classes = {
+    "ldap": LdapPersistence,
+    "couchbase": CouchbasePersistence,
+    "sql": SQLPersistence,
+    "spanner": SpannerPersistence,
+}
+
+
 class OxauthHandler(BaseHandler):
     def __init__(self, manager, dry_run, **opts):
         super(OxauthHandler, self).__init__(manager, dry_run, **opts)
@@ -154,7 +199,7 @@ class OxauthHandler(BaseHandler):
         persistence_type = os.environ.get("GLUU_PERSISTENCE_TYPE", "ldap")
         ldap_mapping = os.environ.get("GLUU_PERSISTENCE_LDAP_MAPPING", "default")
 
-        if persistence_type in ("ldap", "couchbase"):
+        if persistence_type in ("ldap", "couchbase", "sql", "spanner"):
             backend_type = persistence_type
         else:
             # persistence_type is hybrid
@@ -164,10 +209,7 @@ class OxauthHandler(BaseHandler):
                 backend_type = "couchbase"
 
         # resolve backend
-        if backend_type == "ldap":
-            self.backend = LdapPersistence(manager)
-        else:
-            self.backend = CouchbasePersistence(manager)
+        self.backend = _backend_classes[backend_type](manager)
 
         self.rotation_interval = opts.get("interval", 48)
         self.push_keys = as_boolean(opts.get("push-to-container", True))

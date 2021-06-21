@@ -8,6 +8,8 @@ from pygluu.containerlib.persistence.couchbase import CouchbaseClient
 from pygluu.containerlib.persistence.couchbase import get_couchbase_user
 from pygluu.containerlib.persistence.couchbase import get_couchbase_password
 from pygluu.containerlib.persistence.ldap import LdapClient
+from pygluu.containerlib.persistence.sql import SQLClient
+from pygluu.containerlib.persistence.spanner import SpannerClient
 
 from base_handler import BaseHandler
 from settings import LOGGING_CONFIG
@@ -148,6 +150,60 @@ class CouchbasePersistence(BasePersistence):
         return req.ok
 
 
+class SQLPersistence(BasePersistence):
+    def __init__(self, manager):
+        self.client = SQLClient()
+        self.manager = manager
+
+    def _modify_scim_client(self, client_id, jwks: str) -> bool:
+        return self.client.update("oxAuthClient", client_id, {"oxAuthJwks": jwks})
+
+    def modify_scim_rs_client(self, jwks: str) -> bool:
+        client_id = self.manager.config.get("scim_rs_client_id")
+        return self._modify_scim_client(client_id, jwks)
+
+    def modify_scim_rp_client(self, jwks: str) -> bool:
+        client_id = self.manager.config.get("scim_rp_client_id")
+        return self._modify_scim_client(client_id, jwks)
+
+    def modify_scim_rs_config(self, cert_alias):
+        id_ = "oxtrust"
+        table_name = "oxTrustConfiguration"
+
+        entry = self.client.get(table_name, id_, ["oxRevision", "oxTrustConfApplication"])
+
+        if not entry:
+            return False
+
+        conf = json.loads(entry["oxTrustConfApplication"])
+        conf["scimUmaClientKeyId"] = cert_alias
+        rev = int(entry["oxRevision"]) + 1
+
+        modified = self.client.update(
+            table_name,
+            id_,
+            {
+                "oxRevision": rev,
+                "oxTrustConfApplication": json.dumps(conf),
+            },
+        )
+        return modified
+
+
+class SpannerPersistence(SQLPersistence):
+    def __init__(self, manager):
+        self.client = SpannerClient()
+        self.manager = manager
+
+
+_backend_classes = {
+    "ldap": LdapPersistence,
+    "couchbase": CouchbasePersistence,
+    "sql": SQLPersistence,
+    "spanner": SpannerPersistence,
+}
+
+
 class ScimHandler(BaseHandler):
     def __init__(self, manager, dry_run, **opts):
         super().__init__(manager, dry_run, **opts)
@@ -155,7 +211,7 @@ class ScimHandler(BaseHandler):
         persistence_type = os.environ.get("GLUU_PERSISTENCE_TYPE", "ldap")
         ldap_mapping = os.environ.get("GLUU_PERSISTENCE_LDAP_MAPPING", "default")
 
-        if persistence_type in ("ldap", "couchbase"):
+        if persistence_type in ("ldap", "couchbase", "sql", "spanner"):
             backend_type = persistence_type
         else:
             # persistence_type is hybrid
@@ -165,10 +221,7 @@ class ScimHandler(BaseHandler):
                 backend_type = "couchbase"
 
         # resolve backend
-        if backend_type == "ldap":
-            self.backend = LdapPersistence(manager)
-        else:
-            self.backend = CouchbasePersistence(manager)
+        self.backend = _backend_classes[backend_type](manager)
 
     def patch_scim_rs(self):
         jks_fn = self.manager.config.get("scim_rs_client_jks_fn")

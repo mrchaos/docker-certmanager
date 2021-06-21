@@ -1,2 +1,2 @@
 click==6.7
--e git+https://github.com/GluuFederation/pygluu-containerlib@2.8.0#egg=pygluu-containerlib
+-e git+https://github.com/GluuFederation/pygluu-containerlib@b6f31c8c227dc965027ef3e97452e3c10eb9f467#egg=pygluu-containerlib
